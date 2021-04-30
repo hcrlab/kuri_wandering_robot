@@ -1,0 +1,12 @@
+<launch>
+  <node pkg="kuri_cmm_demo" type="subsampling_policy.py" name="subsampling_policy" output="screen">
+    <param name='sub_topic' value="/upward_looking_camera/compressed/subsampled"/>
+    <param name='pub_topic' value="/upward_looking_camera/compressed/subsampled/detect_objects"/>
+  </node>
+
+  <node pkg="kuri_cmm_demo" type="object_detection.py" name="object_detection" output="screen">
+    <param name='sub_topic' value="/upward_looking_camera/compressed"/>
+    <param name='pub_topic' value="/upward_looking_camera/compressed/subsampled"/>
+  </node>
+
+</launch>
