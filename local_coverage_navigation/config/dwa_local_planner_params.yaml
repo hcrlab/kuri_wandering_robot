@@ -1,0 +1,33 @@
+DWAPlannerROS:
+  #acc_lim_theta: 3.2
+  acc_lim_th: 3.2
+  acc_lim_x: 2.0
+  acc_lim_y: 0.0
+
+  max_trans_vel: .3  #not in TrajectoryPlannerROS
+  min_trans_vel: 0.0 #not in TrajectoryPlannerROS
+
+  max_vel_x: 0.15 # was 0.3
+  min_vel_x: 0.0 # This must be 0 for in-place rotations to be possible 
+
+  max_vel_y: 0.0
+  min_vel_y: 0.0
+
+  max_rot_vel: 0.8
+  min_rot_vel: 0.2
+
+  yaw_goal_tolerance: 0.2
+  xy_goal_tolerance: 0.1  # meters 
+  latch_xy_goal_tolerance: true # just turn in place if you hit the xy goal
+
+  stop_time_buffer: 0.25
+  path_distance_bias: 10.0
+  goal_distance_bias: 10.0
+  vx_samples: 5  # used to be 8 (turtlebot default uses 6)
+  vy_samples: 0
+  vth_samples: 18
+  occdist_scale: 0.0 #was 0.01
+  forward_point_distance: 0.32
+  sim_time: 2.0
+
+  use_dwa: true  # use trajectory rollout (if use_dwa is true and you try to go 180 degrees behind you, it will oscillate forever)

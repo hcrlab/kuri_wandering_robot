@@ -1,0 +1,3 @@
+# local_coverage_navigation
+
+A fork of `move_base` with global planner capabilities removed. Kuri does not use `move_base` and did not ship with the necessary dependencies. Even if it had, `move_base` looks much different in newer releases thanks to TF2 adoption. To make the navigation component easy to develop, easy to deploy and easy to use in other contexts, this code is developed against the Melodic/Noetic releases of ROS Navigation. A Dockerfile is included for running on the robot.

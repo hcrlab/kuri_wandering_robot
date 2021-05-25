@@ -1,0 +1,39 @@
+<package format="2">
+  <name>local_coverage_navigation</name>
+  <version>0.1.0</version>
+  <description>
+    A local planner that attempts to maximize global map coverage
+  </description>
+  <license>MIT</license>
+  <maintainer email="nswalker@cs.washington.edu">Nick Walker</maintainer>
+  <author email="nswalker@cs.washington.edu">Nick Walker</author>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <exec_depend>catkin</exec_depend>
+  <exec_depend>rospack</exec_depend>
+
+
+  
+    <depend>actionlib</depend>
+    <depend>base_local_planner</depend>
+    <depend>costmap_2d</depend>
+    <depend>geometry_msgs</depend>
+    <depend>move_base_msgs</depend>
+    <exec_depend>kuri_navigation</exec_depend>
+    <depend>nav_core</depend>
+    <depend>nav_msgs</depend>
+    <depend>pluginlib</depend>
+    <depend>roscpp</depend>
+    <depend>rospy</depend>
+    <depend>std_srvs</depend>
+    <depend>tf2_ros</depend>
+    <depend>visualization_msgs</depend>
+
+  
+  <export>
+    <gazebo_ros plugin_path="${prefix}/lib" gazebo_media_path="${prefix}" gazebo_model_path="${prefix}/models"/>
+  </export>
+
+</package>

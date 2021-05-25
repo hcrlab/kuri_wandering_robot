@@ -1,0 +1,12 @@
+<launch>
+    <arg name="initial_pose_x" default="0.0" />
+    <arg name="initial_pose_y" default="0.0" />
+    <arg name="initial_pose_a" default="0.0" />
+    <arg name="map_file" default="$(find kuri_navigation)/maps/empty_map.yaml" />
+
+    <!-- Autonomous Navigation -->
+    <include file="$(find local_coverage_navigation)/launch/kuri_local_navigator.launch" />
+
+    <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
+
+</launch>

@@ -1,0 +1,59 @@
+TrajectoryPlannerROS:
+
+# Robot Configuration Parameters
+  max_vel_x: 0.3 # was 0.5 
+  min_vel_x: 0.05 # was 0.1 
+
+  max_vel_theta:  0.75
+  min_vel_theta:  -0.75
+  min_in_place_vel_theta: 0.25
+
+  #To fix corner cutting - waypoints further out than 0.5 meters are pruned
+  prune_waypoints : true
+  waypoint_prune_distance: 0.5  
+  check_waypoints_for_obstacles: true
+ 
+  acc_lim_x: 2.0
+  acc_lim_theta: 3.2
+
+  escape_vel: -0.005
+  escape_reset_dist: 0.001
+
+# Goal Tolerance Parameters
+  yaw_goal_tolerance: 0.2
+  xy_goal_tolerance: 0.1
+  latch_xy_goal_tolerance: true
+
+# Forward Simulation Parameters
+  sim_time: 0.8 # (turtlebot default uses 1.0)
+  sim_granularity: 0.04 # orig 0.025 - seemed too fine grained 
+  angular_sim_granularity: 0.05 # orig 0.025 seems pretty fine grained
+  vx_samples: 5  # used to be 8 (turtlebot default uses 6)
+  vtheta_samples: 18 # This was increased from 15 (turtlebot default uses 20) 
+
+# Trajectory Scoring Parameters
+  meter_scoring: true
+  #Issue much less when when occ = 0, pdis = 1.0, gdist = 0.3 or 0, 0.5, 0.5
+  pdist_scale: 0.5 #was 1.0  
+  gdist_scale: 0.5 # was 0.4
+  occdist_scale: 0.0 #was 0.01
+  heading_lookahead: 0.5 #can't have this be very high (messes up the turns) 
+  heading_scoring: false #heading scoring makes it go bat shit crazy - looks like a gain issue?? (occilating quite a lot) 
+  heading_scoring_on_rotate: true
+  heading_scale: 0.001
+  dwa: true
+
+# Oscillation Prevention Parameters
+  oscillation_reset_dist: 0.05
+
+# Differential-drive robot configuration
+  holonomic_robot: false
+  max_vel_y: 0.0
+  min_vel_y: 0.0
+  acc_lim_y: 0.0
+  vy_samples: 0
+
+# Display parameters
+  publish_cost_grid_pc: false
+
+

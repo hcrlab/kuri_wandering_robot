@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<launch>
+  <arg name="use_laser" default="true"/>
+
+  <!-- Delete move base params to remove the empty robot footprint that gets generated and saved -->
+  <rosparam command="delete" ns="move_base" />
+
+  <!--<include file="$(find kuri_navigation)/launch/velocity_smoother.launch"/>-->
+  <!--include file="$(find gizmo)/launch/includes/kobuki/safety_controller.launch.xml"/-->
+
+  <node pkg="local_coverage_navigation" type="local_coverage_navigator" respawn="false" name="local_coverage_navigator" output="screen">
+    <rosparam file="$(find local_coverage_navigation)/config/costmap_params.yaml" command="load" ns="local_costmap" />
+
+    <rosparam file="$(find local_coverage_navigation)/config/local_costmap_common_params.yaml" command="load" />
+    <rosparam file="$(find local_coverage_navigation)/config/local_costmap_plugins.yaml" command="load" ns="local_costmap" />
+
+    <!--overwrite observation_sources to not include the laser-->
+    <rosparam unless="$(arg use_laser)" ns="local_costmap/obstacle_layer" param="observation_sources">bump</rosparam>
+
+    <!--if you're not using the laser, increase the timeout of the bump observations-->
+    <rosparam unless="$(arg use_laser)" ns="global_costmap/obstacle_layer/bump" param="max_obstacle_persistence">30.0</rosparam>
+
+    <!--<rosparam file="$(find kuri_navigation)/config/nav_params/base_local_planner_params.yaml" command="load" />-->
+    <rosparam file="$(find local_coverage_navigation)/config/dwa_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find local_coverage_navigation)/config/recovery_behaviors.yaml" command="load" />
+
+    <rosparam file="$(find local_coverage_navigation)/config/move_base_params.yaml" command="load"/>
+
+    <remap from="cmd_vel" to="/mobile_base/commands/velocity"/>
+
+  </node>
+  <node pkg="mobile_base_utils" type="bumper_to_pointcloud" name="bumper_to_pointcloud" />
+
+</launch>
