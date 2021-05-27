@@ -1,0 +1,18 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find kuri_cmm_demo)/cfg/custom_rosconsole.conf"/>
+
+  <!-- Launch the object_detection service -->
+  <node pkg="kuri_cmm_demo" type="object_detection.py" name="object_detection" output="screen">
+    <param name='aws_profile_name' value="default"/>
+    <param name='aws_region_name' value="us-west-2"/>
+  </node>
+
+  <!-- Launch the overall CMM Demo node -->
+  <node pkg="kuri_cmm_demo" type="kuri_cmm_demo_node.py" name="kuri_cmm_demo_node" output="screen">
+    <param name='img_topic' value="/upward_looking_camera/compressed"/>
+    <param name='object_detection_srv' value="object_detection"/>
+    <param name='slackbot_url' value="http://ec2-34-222-57-139.us-west-2.compute.amazonaws.com:8194"/>
+    <param name='send_messages_database_filepath' value="/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl"/>
+  </node>
+
+</launch>

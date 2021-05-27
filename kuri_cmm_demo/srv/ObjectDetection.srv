@@ -1,0 +1,6 @@
+sensor_msgs/CompressedImage compressed_image
+bool force_exact_image
+---
+DetectedObjects detected_objects
+bool success
+float64 elapsed_wall_time
