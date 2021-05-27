@@ -4,8 +4,8 @@ DWAPlannerROS:
   acc_lim_x: 2.0
   acc_lim_y: 0.0
 
-  max_trans_vel: .3  #not in TrajectoryPlannerROS
-  min_trans_vel: 0.0 #not in TrajectoryPlannerROS
+  max_vel_trans: .3  #not in TrajectoryPlannerROS
+  min_vel_trans: 0.0 #not in TrajectoryPlannerROS
 
   max_vel_x: 0.15 # was 0.3
   min_vel_x: 0.0 # This must be 0 for in-place rotations to be possible 
@@ -13,8 +13,8 @@ DWAPlannerROS:
   max_vel_y: 0.0
   min_vel_y: 0.0
 
-  max_rot_vel: 0.8
-  min_rot_vel: 0.2
+  max_vel_theta: 0.8
+  min_vel_theta: 0.2
 
   yaw_goal_tolerance: 0.2
   xy_goal_tolerance: 0.1  # meters 

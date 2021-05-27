@@ -40,6 +40,8 @@
 
 #include <boost/algorithm/string.hpp>
 #include <boost/thread.hpp>
+#include <boost/bind.hpp>
+#include <boost/make_shared.hpp>
 
 #include <geometry_msgs/Twist.h>
 
@@ -58,10 +60,12 @@ namespace local_coverage_navigation {
     planner_plan_(NULL), latest_plan_(NULL), controller_plan_(NULL),
     runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
 
+    as_ = new NavigateActionServer(ros::NodeHandle(), "navigate", boost::bind(&LocalCoverageNavigator::executeCb, this, _1), false);
 
     ros::NodeHandle private_nh("~");
-    ros::Duration(10).sleep();
     ros::NodeHandle nh;
+
+
 
     recovery_trigger_ = PLANNING_R;
 
@@ -69,7 +73,7 @@ namespace local_coverage_navigation {
     std::string global_planner, local_planner;
     private_nh.param("base_local_planner", local_planner, std::string("base_local_planner/TrajectoryPlannerROS"));
     private_nh.param("local_costmap/robot_base_frame", robot_base_frame_, std::string("base_link"));
-    private_nh.param("local_costmap/global_frame", global_frame_, std::string("map"));
+    private_nh.param("local_costmap/global_frame", global_frame_, std::string("odom"));
     private_nh.param("planner_frequency", planner_frequency_, 0.0);
     private_nh.param("controller_frequency", controller_frequency_, 20.0);
     private_nh.param("planner_patience", planner_patience_, 5.0);
@@ -126,7 +130,6 @@ namespace local_coverage_navigation {
     // Start actively updating costmaps based on sensor data
     controller_costmap_ros_->start();
 
-
     //advertise a service for clearing the costmaps
     clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &LocalCoverageNavigator::clearCostmapsService, this);
 
@@ -146,6 +149,9 @@ namespace local_coverage_navigation {
 
     //we'll start executing recovery behaviors at the beginning of our list
     recovery_index_ = 0;
+
+    //we're all set up now so we can start the action server
+    as_->start();
 
     test_thread = new boost::thread(boost::bind(&LocalCoverageNavigator::testThread, this));
   }
@@ -195,10 +201,7 @@ namespace local_coverage_navigation {
   LocalCoverageNavigator::~LocalCoverageNavigator(){
     recovery_behaviors_.clear();
 
-    //delete dsrv_;
-
-    if(controller_costmap_ros_ != NULL)
-      delete controller_costmap_ros_;
+    delete controller_costmap_ros_;
 
     planner_thread_->interrupt();
     planner_thread_->join();
@@ -260,7 +263,7 @@ namespace local_coverage_navigation {
 
   void LocalCoverageNavigator::testThread(){
     while (ros::ok()) {
-      executeCb();
+      executeCb(boost::make_shared<NavigateGoal>());
     }
   }
 
@@ -285,7 +288,7 @@ namespace local_coverage_navigation {
       lock.unlock();
       planner_plan_->clear();
 
-      auto base_link_to_odom = tf_.lookupTransform("base_link", "odom", ros::Time(0));
+      auto base_link_to_odom = tf_.lookupTransform(robot_base_frame_, "odom", ros::Time(0));
       // First get the angle to an odom frame quat
       tf2::Quaternion q;
       q.setRPY(0, 0, current_angle);
@@ -295,13 +298,13 @@ namespace local_coverage_navigation {
       // Now find a point in the direction of the quat.
       // Start with the straight ahead in base_link
       geometry_msgs::PoseStamped goal_pose;
-      goal_pose.header.frame_id = "base_link";
+      goal_pose.header.frame_id = robot_base_frame_;
       goal_pose.pose.position.x = 1.0;
       goal_pose.pose.orientation.w = 1.0;
 
       // Now transform to the frame where the goal_angle is the 0 angle
       geometry_msgs::TransformStamped rotate_transform;
-      rotate_transform.header.frame_id = "base_link";
+      rotate_transform.header.frame_id = robot_base_frame_;
       rotate_transform.child_frame_id = "rotated_base_link";
       rotate_transform.transform.rotation = goal_angle_in_base_link;
       tf2::doTransform(goal_pose, goal_pose, rotate_transform);
@@ -310,7 +313,7 @@ namespace local_coverage_navigation {
       // just rotated.
       for (int i = 0; i < 100; i++) {
         geometry_msgs::PoseStamped step;
-        step.header.frame_id = "base_link";
+        step.header.frame_id = robot_base_frame_;
         step.pose.position.x = i * 0.2 * goal_pose.pose.position.x;
         step.pose.position.y = i * 0.2 * goal_pose.pose.position.y;
         step.pose.orientation = goal_pose.pose.orientation;
@@ -318,7 +321,7 @@ namespace local_coverage_navigation {
       }
 
 
-      auto transform = tf_.lookupTransform("odom", "base_link", ros::Time(0));
+      auto transform = tf_.lookupTransform("odom", robot_base_frame_, ros::Time(0));
       // Go in chosen angle
       for (int i = 0; i < 100; i++) {
         tf2::doTransform<geometry_msgs::PoseStamped>(planner_plan_->at(i), planner_plan_->at(i), transform);
@@ -345,7 +348,7 @@ namespace local_coverage_navigation {
     }
   }
 
-  int LocalCoverageNavigator::executeCb()
+  int LocalCoverageNavigator::executeCb(const local_coverage_navigation::NavigateGoalConstPtr& move_base_goal)
   {
     ROS_ERROR("LOOP START");
 
@@ -367,22 +370,10 @@ namespace local_coverage_navigation {
     ros::NodeHandle n;
     while(n.ok())
     {
-      if(c_freq_change_)
-      {
-        ROS_INFO("Setting controller frequency to %.2f", controller_frequency_);
-        r = ros::Rate(controller_frequency_);
-        c_freq_change_ = false;
-      }
-
-
-
       //for timing that gives real time even in simulation
       ros::WallTime start = ros::WallTime::now();
-      geometry_msgs::PoseStamped goal;
-      goal.header.frame_id = "base_link";
-      goal.pose.position.x = 0.1;
       //the real work on pursuing a goal is done here
-      bool done = executeCycle(goal);
+      bool done = executeCycle();
 
       //if we're done, then we'll return from execute
       if(done)
@@ -409,7 +400,7 @@ namespace local_coverage_navigation {
     return hypot(p1.pose.position.x - p2.pose.position.x, p1.pose.position.y - p2.pose.position.y);
   }
 
-  bool LocalCoverageNavigator::executeCycle(geometry_msgs::PoseStamped& goal){
+  bool LocalCoverageNavigator::executeCycle(){
     //boost::recursive_mutex::scoped_lock ecl(configuration_mutex_);
     //we need to be able to publish velocity commands
     geometry_msgs::Twist cmd_vel;
@@ -547,7 +538,7 @@ namespace local_coverage_navigation {
             ROS_ERROR("No valid control, planner on");
             // HAX: Manual recovery
             static std::default_random_engine e;
-            static std::uniform_real_distribution<double> dis(-M_PI / 2, M_PI / 2);
+            static std::uniform_real_distribution<double> dis(-M_PI / 4, M_PI / 4);
             current_angle += dis(e);
             ROS_ERROR_STREAM("SET ANGLE BY PERTURB" << current_angle);
             //otherwise, if we can't find a valid control, we'll go back to planning
@@ -573,8 +564,6 @@ namespace local_coverage_navigation {
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
         if(recovery_behavior_enabled_ && recovery_index_ < recovery_behaviors_.size()){
           ROS_DEBUG_NAMED("move_base_recovery","Executing behavior %u of %zu", recovery_index_+1, recovery_behaviors_.size());
-
-
 
           recovery_behaviors_[recovery_index_]->runBehavior();
 
@@ -692,9 +681,9 @@ namespace local_coverage_navigation {
             }
 
             //initialize the recovery behavior with its name
-            //behavior->initialize(behavior_list[i]["name"], &tf_, planner_costmap_ros_, controller_costmap_ros_);
-            //recovery_behavior_names_.push_back(behavior_list[i]["name"]);
-            //recovery_behaviors_.push_back(behavior);
+            behavior->initialize(behavior_list[i]["name"], &tf_, controller_costmap_ros_, controller_costmap_ros_);
+            recovery_behavior_names_.push_back(behavior_list[i]["name"]);
+            recovery_behaviors_.push_back(behavior);
           }
           catch(pluginlib::PluginlibException& ex){
             ROS_ERROR("Failed to load a plugin. Using default recovery behaviors. Error: %s", ex.what());

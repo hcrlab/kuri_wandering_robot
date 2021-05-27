@@ -24,6 +24,21 @@ find_package(catkin REQUIRED
 find_package(Eigen3 REQUIRED)
 add_definitions(${EIGEN3_DEFINITIONS})
 
+# actions
+add_action_files(
+        DIRECTORY
+        action
+        FILES
+        Navigate.action
+)
+
+generate_messages(
+        DEPENDENCIES
+        actionlib_msgs
+        geometry_msgs
+)
+
+
 
 catkin_package(
     CATKIN_DEPENDS

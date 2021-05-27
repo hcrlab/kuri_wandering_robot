@@ -54,9 +54,14 @@
 #include <pluginlib/class_loader.hpp>
 #include <std_srvs/Empty.h>
 
+#include <actionlib/server/simple_action_server.h>
+#include <local_coverage_navigation/NavigateAction.h>
+
 #include <dynamic_reconfigure/server.h>
 
 namespace local_coverage_navigation {
+
+typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction> NavigateActionServer;
 
 
   enum LocalCoverageNavigatorState {
@@ -92,11 +97,9 @@ namespace local_coverage_navigation {
 
       /**
        * @brief  Performs a control cycle
-       * @param goal A reference to the goal to pursue
-       * @param global_plan A reference to the global plan being used
        * @return True if processing of the goal is done, false otherwise
        */
-      bool executeCycle(geometry_msgs::PoseStamped& goal);
+      bool executeCycle();
 
     private:
       /**
@@ -106,8 +109,6 @@ namespace local_coverage_navigation {
        * @return True if the service call succeeds, false otherwise
        */
       bool clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
-
-   
 
       /**
        * @brief  Load the recovery behaviors for the navigation stack from the parameter server
@@ -142,7 +143,7 @@ namespace local_coverage_navigation {
 
       void planThread();
 
-      int executeCb();
+      int executeCb(const local_coverage_navigation::NavigateGoalConstPtr& move_base_goal);
 
 
       bool isQuaternionValid(const geometry_msgs::Quaternion& q);
@@ -159,7 +160,6 @@ namespace local_coverage_navigation {
       void wakePlanner(const ros::TimerEvent& event);
 
       tf2_ros::Buffer& tf_;
-
 
 
       boost::shared_ptr<nav_core::BaseLocalPlanner> tc_;
@@ -185,6 +185,8 @@ namespace local_coverage_navigation {
       bool make_plan_clear_costmap_, make_plan_add_unreachable_goal_;
       double oscillation_timeout_, oscillation_distance_;
 
+      NavigateActionServer* as_;
+
       LocalCoverageNavigatorState state_;
       RecoveryTrigger recovery_trigger_;
 
@@ -208,15 +210,6 @@ namespace local_coverage_navigation {
 
       double current_angle;
 
-/*
-      boost::recursive_mutex configuration_mutex_;
-      dynamic_reconfigure::Server<local_coverage_navigation::LocalCoverageNavigatorConfig> *dsrv_;
-      
-      void reconfigureCB(local_coverage_navigation::LocalCoverageNavigatorConfig &config, uint32_t level);
-
-      local_coverage_navigation::LocalCoverageNavigatorConfig last_config_;
-      local_coverage_navigation::LocalCoverageNavigatorConfig default_config_;
-      */
       bool setup_, p_freq_change_, c_freq_change_;
       bool new_global_plan_;
   };

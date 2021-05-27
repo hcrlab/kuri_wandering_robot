@@ -7,12 +7,10 @@
   <rosparam command="delete" ns="move_base" />
 
   <!--<include file="$(find kuri_navigation)/launch/velocity_smoother.launch"/>-->
-  <!--include file="$(find gizmo)/launch/includes/kobuki/safety_controller.launch.xml"/-->
 
   <node pkg="local_coverage_navigation" type="local_coverage_navigator" respawn="false" name="local_coverage_navigator" output="screen">
-    <rosparam file="$(find local_coverage_navigation)/config/costmap_params.yaml" command="load" ns="local_costmap" />
+    <rosparam file="$(find local_coverage_navigation)/config/costmap_params.yaml" command="load" />
 
-    <rosparam file="$(find local_coverage_navigation)/config/local_costmap_common_params.yaml" command="load" />
     <rosparam file="$(find local_coverage_navigation)/config/local_costmap_plugins.yaml" command="load" ns="local_costmap" />
 
     <!--overwrite observation_sources to not include the laser-->
@@ -30,6 +28,6 @@
     <remap from="cmd_vel" to="/mobile_base/commands/velocity"/>
 
   </node>
-  <node pkg="mobile_base_utils" type="bumper_to_pointcloud" name="bumper_to_pointcloud" />
+  <node pkg="kuri_navigation" type="bumper_to_pointcloud" name="bumper_to_pointcloud" />
 
 </launch>

@@ -4,11 +4,10 @@ raytrace_range: 3.0
 footprint_padding: 0.0
 robot_radius: 0.15
 # voxel map configuration; z-voxels 0 are filled by bumpers and 1 by laser scan (kinect)
-map_type: voxel
 origin_z: 0.0
 z_resolution: 0.15
 z_voxels: 2
-global_frame: map
+global_frame: odom
 robot_base_frame: base_footprint
 transform_tolerance: 2.0
 
@@ -17,15 +16,18 @@ local_costmap:
   publish_frequency: 1.0
   static_map: false
   rolling_window: true
-  width: 2.5
-  height: 2.5
+  width: 3.5
+  height: 3.5
+  obstacle_max_range: 4.0
+  raytrace_max_range: 4.0
   resolution: 0.02
+  global_frame: odom
 
-  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.22, robot_radius: 0.22}
+  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.50, robot_radius: 0.22}
 
   obstacle_layer:
     bump: {clearing: false, data_type: PointCloud2, marking: true, max_obstacle_height: 1.0,
-           min_obstacle_height: 0.0, topic: /bumper_to_pointcloud/cloud, observation_persistence: 0.0,
+           min_obstacle_height: 0.0, topic: /mobile_base/sensors/bumper_cloud, observation_persistence: 0.0,
            observation_timeout_from_now: 30.0, expected_update_rate: 0.2}
     observation_sources: scan bump
     scan: {clearing: true, data_type: LaserScan, marking: true, max_obstacle_height: 1.0, inf_is_valid: true,
