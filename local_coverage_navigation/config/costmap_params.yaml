@@ -16,14 +16,14 @@ local_costmap:
   publish_frequency: 1.0
   static_map: false
   rolling_window: true
-  width: 3.5
-  height: 3.5
-  obstacle_max_range: 4.0
-  raytrace_max_range: 4.0
+  width: 3.0
+  height: 3.0
+  obstacle_max_range: 5.0
+  raytrace_max_range: 5.0
   resolution: 0.02
   global_frame: odom
 
-  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.50, robot_radius: 0.22}
+  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.25, robot_radius: 0.22}
 
   obstacle_layer:
     bump: {clearing: false, data_type: PointCloud2, marking: true, max_obstacle_height: 1.0,

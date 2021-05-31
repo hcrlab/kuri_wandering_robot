@@ -267,6 +267,13 @@ namespace local_coverage_navigation {
     }
   }
 
+
+inline double abs_angle_diff(const double x, const double y)
+{
+  return M_PI - fabs(fmod(fabs(x - y), 2*M_PI) - M_PI);
+}
+
+
   void LocalCoverageNavigator::planThread(){
     ROS_DEBUG_NAMED("move_base_plan_thread","Starting planner thread...");
     ros::NodeHandle n;
@@ -286,45 +293,88 @@ namespace local_coverage_navigation {
       }
       ros::Time start_time = ros::Time::now();
       lock.unlock();
+      ROS_INFO("Unlocked");
       planner_plan_->clear();
+      ROS_INFO_STREAM("Current angle:" << current_angle);
+      const auto size_x = this->controller_costmap_ros_->getCostmap()->getSizeInCellsX();
+      const auto size_y = this->controller_costmap_ros_->getCostmap()->getSizeInCellsY();
+      const uint mid_x = size_x / 2;
+      const uint mid_y = size_y / 2;
+      int cheapest_goal_i = -1;
+      uint cheapest_cost = -1;
+      double best_angle_diff = 2 * M_PI;
+      uint steps = 6;
+      uint half_steps = steps / 2;
+      uint steps3 = steps * 3;
+      uint steps4 = steps * 4;
+      uint steps32 = steps3 / 2;
+      uint x_step = size_x / steps;
+      uint y_step = size_y / steps;
+      for (int i = 0; i < steps4; i++) {
+        int goal_xi = abs((int)((i % steps4) - steps32)) - half_steps;
+        int goal_yi = abs((int)(((i + steps) % steps4) - steps32)) - half_steps;
+        goal_xi = std::max(0, std::min(goal_xi, (int)steps));
+        goal_yi = std::max(0, std::min(goal_yi, (int)steps));
+        goal_xi *= x_step;
+        goal_yi *= y_step;
+        auto line_cost = local_coverage_navigation::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
+        raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
+        double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
+        double angle_diff = abs_angle_diff(current_angle, angle);
+        //ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
+        if (line_cost.cost < cheapest_cost) {
+          cheapest_cost = line_cost.cost;
+          cheapest_goal_i = i;
+          best_angle_diff = angle_diff;
+        } else if (line_cost.cost == cheapest_cost && angle_diff < best_angle_diff){
+          cheapest_cost = line_cost.cost;
+          cheapest_goal_i = i;
+          best_angle_diff = angle_diff;
+        }
+      }
+      ROS_INFO_STREAM("Best cost" << cheapest_cost << " Best diff: " << best_angle_diff);
+      int goal_xi = abs((int)((cheapest_goal_i % steps4) - steps32)) - half_steps;
+      int goal_yi = abs((int)(((cheapest_goal_i + steps) % steps4) - steps32)) - half_steps;
+      goal_xi = std::max(0, std::min(goal_xi, (int)steps));
+      goal_yi = std::max(0, std::min(goal_yi, (int)steps));
+      goal_xi *= x_step;
+      goal_yi *= y_step;
 
-      auto base_link_to_odom = tf_.lookupTransform(robot_base_frame_, "odom", ros::Time(0));
+      double start_x;
+      double start_y;
+      this->controller_costmap_ros_->getCostmap()->mapToWorld(mid_x, mid_y, start_x, start_y);
+
+      double goal_x;
+      double goal_y;
+      this->controller_costmap_ros_->getCostmap()->mapToWorld(goal_xi, goal_yi, goal_x, goal_y);
+
+      double goal_angle = atan2(goal_y - start_y, goal_x - start_x);
+      current_angle = goal_angle;
+
       // First get the angle to an odom frame quat
       tf2::Quaternion q;
-      q.setRPY(0, 0, current_angle);
+      q.setRPY(0, 0, goal_angle);
       geometry_msgs::Quaternion goal_angle_in_base_link = tf2::toMsg(q);
-      tf2::doTransform(goal_angle_in_base_link, goal_angle_in_base_link, base_link_to_odom);
 
       // Now find a point in the direction of the quat.
       // Start with the straight ahead in base_link
       geometry_msgs::PoseStamped goal_pose;
-      goal_pose.header.frame_id = robot_base_frame_;
-      goal_pose.pose.position.x = 1.0;
-      goal_pose.pose.orientation.w = 1.0;
+      goal_pose.header.frame_id = global_frame_;
+      goal_pose.pose.position.x = goal_x;
+      goal_pose.pose.position.y = goal_y;
+      goal_pose.pose.orientation = goal_angle_in_base_link;
 
-      // Now transform to the frame where the goal_angle is the 0 angle
-      geometry_msgs::TransformStamped rotate_transform;
-      rotate_transform.header.frame_id = robot_base_frame_;
-      rotate_transform.child_frame_id = "rotated_base_link";
-      rotate_transform.transform.rotation = goal_angle_in_base_link;
-      tf2::doTransform(goal_pose, goal_pose, rotate_transform);
+      current_goal_pub_.publish(goal_pose);
 
-      // So now goal_pose is "in" rotated_base_link, but we'll just treat it as base_link since the origin is the same
-      // just rotated.
+
       for (int i = 0; i < 100; i++) {
         geometry_msgs::PoseStamped step;
-        step.header.frame_id = robot_base_frame_;
-        step.pose.position.x = i * 0.2 * goal_pose.pose.position.x;
-        step.pose.position.y = i * 0.2 * goal_pose.pose.position.y;
+        step.header.frame_id = global_frame_;
+        double p = i * 0.01;
+        step.pose.position.x = (1 - p) * start_x + p * goal_pose.pose.position.x;
+        step.pose.position.y = (1 - p) * start_y + p * goal_pose.pose.position.y;
         step.pose.orientation = goal_pose.pose.orientation;
         planner_plan_->push_back(step);
-      }
-
-
-      auto transform = tf_.lookupTransform("odom", robot_base_frame_, ros::Time(0));
-      // Go in chosen angle
-      for (int i = 0; i < 100; i++) {
-        tf2::doTransform<geometry_msgs::PoseStamped>(planner_plan_->at(i), planner_plan_->at(i), transform);
       }
 
       std::vector<geometry_msgs::PoseStamped>* temp_plan = planner_plan_;
@@ -539,8 +589,8 @@ namespace local_coverage_navigation {
             // HAX: Manual recovery
             static std::default_random_engine e;
             static std::uniform_real_distribution<double> dis(-M_PI / 4, M_PI / 4);
-            current_angle += dis(e);
-            ROS_ERROR_STREAM("SET ANGLE BY PERTURB" << current_angle);
+            //current_angle += dis(e);
+            //ROS_ERROR_STREAM("SET ANGLE BY PERTURB" << current_angle);
             //otherwise, if we can't find a valid control, we'll go back to planning
             last_valid_plan_ = ros::Time::now();
             planning_retries_ = 0;
@@ -583,7 +633,7 @@ namespace local_coverage_navigation {
           // HAX: Manual recovery
           static std::default_random_engine e;
           static std::uniform_real_distribution<double> dis(0, 6.28);
-          current_angle = dis(e);
+          //current_angle = dis(e);
           ROS_ERROR_STREAM(current_angle);
           ROS_ERROR("SET ANGLE");
           ROS_DEBUG_NAMED("move_base_recovery","All recovery behaviors have failed, locking the planner and disabling it.");

@@ -213,6 +213,95 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       bool setup_, p_freq_change_, c_freq_change_;
       bool new_global_plan_;
   };
+
+
+class CalcCost
+{
+public:
+  CalcCost(unsigned char* costmap) :
+      costmap_(costmap), cost(0)
+  {
+  }
+  inline void operator()(unsigned int offset)
+  {
+    auto t = costmap_[offset];
+    cost += costmap_[offset];
+  }
+
+  unsigned int cost;
+private:
+  unsigned char* costmap_;
+
+};
+
+
+inline int sign(int x)
+{
+  return x > 0 ? 1.0 : -1.0;
+}
+
+/**
+* @brief  Raytrace a line and apply some action at each step
+* @param  at The action to take... a functor
+* @param  x0 The starting x coordinate
+* @param  y0 The starting y coordinate
+* @param  x1 The ending x coordinate
+* @param  y1 The ending y coordinate
+* @param  max_length The maximum desired length of the segment... allows you to not go all the way to the endpoint
+*/
+template<class ActionType>
+inline void raytraceLine(ActionType& at, unsigned int x0, unsigned int y0, unsigned int x1, unsigned int y1, unsigned int size_x,
+                         unsigned int max_length = UINT_MAX)
+{
+  int dx = x1 - x0;
+  int dy = y1 - y0;
+
+  unsigned int abs_dx = abs(dx);
+  unsigned int abs_dy = abs(dy);
+
+  int offset_dx = sign(dx);
+  int offset_dy = sign(dy) * size_x;
+
+  unsigned int offset = y0 * size_x + x0;
+
+  // we need to chose how much to scale our dominant dimension, based on the maximum length of the line
+  double dist = hypot(dx, dy);
+  double scale = (dist == 0.0) ? 1.0 : std::min(1.0, max_length / dist);
+
+  // if x is dominant
+  if (abs_dx >= abs_dy)
+  {
+    int error_y = abs_dx / 2;
+    bresenham2D(at, abs_dx, abs_dy, error_y, offset_dx, offset_dy, offset, (unsigned int)(scale * abs_dx));
+    return;
+  }
+
+  // otherwise y is dominant
+  int error_x = abs_dy / 2;
+  bresenham2D(at, abs_dy, abs_dx, error_x, offset_dy, offset_dx, offset, (unsigned int)(scale * abs_dy));
+}
+
+/**
+ * @brief  A 2D implementation of Bresenham's raytracing algorithm... applies an action at each step
+ */
+template<class ActionType>
+inline void bresenham2D(ActionType& at, unsigned int abs_da, unsigned int abs_db, int error_b, int offset_a,
+                        int offset_b, unsigned int offset, unsigned int max_length)
+{
+  unsigned int end = std::min(max_length, abs_da);
+  for (unsigned int i = 0; i < end; ++i)
+  {
+    at(offset);
+    offset += offset_a;
+    error_b += abs_db;
+    if ((unsigned int)error_b >= abs_da)
+    {
+      offset += offset_b;
+      error_b -= abs_da;
+    }
+  }
+  at(offset);
+}
 };
 #endif
 
