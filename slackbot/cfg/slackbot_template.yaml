@@ -1,0 +1,6 @@
+users_list: ["", ""]
+# See https://docs.google.com/document/d/1D1hoInDg7urD7bdEWlJYECyfAjihmlJEwYAwjEWbbMM/edit
+# for instructions on setting up a Slackbot and getting its tokens/secrets.
+slack_bot_token: ""
+slack_user_token: ""
+slack_signing_secret: ""
