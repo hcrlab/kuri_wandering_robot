@@ -127,7 +127,7 @@ class CMMDemo(object):
         # Get the detected objects in the image
         rospy.wait_for_service(self.object_detection_srv_name)
         with self.object_detection_srv_lock:
-            object_detection_response = self.object_detection_srv(img_msg, True)
+            object_detection_response = self.object_detection_srv(img_msg)
         if not object_detection_response.success:
             rospy.logwarn("Object detection failed, not sending image")
             return

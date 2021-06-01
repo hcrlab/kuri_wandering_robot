@@ -1,4 +1,4 @@
-sensor_msgs/CompressedImage compressed_image
+time stamp
 ---
 DetectedObjects detected_objects
 bool success
