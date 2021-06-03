@@ -209,6 +209,7 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       boost::thread* test_thread;
 
       double current_angle;
+      double cost_threshold;
 
       bool setup_, p_freq_change_, c_freq_change_;
       bool new_global_plan_;
