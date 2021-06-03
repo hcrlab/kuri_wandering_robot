@@ -11,8 +11,6 @@
   <node pkg="local_coverage_navigation" type="local_coverage_navigator" respawn="false" name="local_coverage_navigator" output="screen">
     <rosparam file="$(find local_coverage_navigation)/config/costmap_params.yaml" command="load" />
 
-    <rosparam file="$(find local_coverage_navigation)/config/local_costmap_plugins.yaml" command="load" ns="local_costmap" />
-
     <!--overwrite observation_sources to not include the laser-->
     <rosparam unless="$(arg use_laser)" ns="local_costmap/obstacle_layer" param="observation_sources">bump</rosparam>
 

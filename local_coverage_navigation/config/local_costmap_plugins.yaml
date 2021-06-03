@@ -1,4 +1,0 @@
-   plugins:
-     - {name: obstacle_layer, type: 'costmap_2d::VoxelLayer'}
-#     - {name: footprint_layer, type: 'costmap_2d::FootprintLayer'}
-     - {name: inflation_layer, type: 'costmap_2d::InflationLayer'}
