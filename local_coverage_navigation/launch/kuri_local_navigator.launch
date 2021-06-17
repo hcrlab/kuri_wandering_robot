@@ -26,6 +26,6 @@
     <remap from="cmd_vel" to="/mobile_base/commands/velocity"/>
 
   </node>
-  <node pkg="kuri_navigation" type="bumper_to_pointcloud" name="bumper_to_pointcloud" />
+  <!-- <node pkg="kuri_navigation" type="bumper_to_pointcloud" name="bumper_to_pointcloud" /> -->
 
 </launch>

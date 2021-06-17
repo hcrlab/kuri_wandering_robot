@@ -97,14 +97,15 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
 
       /**
        * @brief  Performs a control cycle
-       * @return True if processing of the goal is done, false otherwise
+       * @return 1 if processing of the goal is done, 0 if processing of the
+        goal should continue, and -1 if it aborted
        */
-      bool executeCycle();
+      int executeCycle();
 
     private:
       /**
        * @brief  A service call that clears the costmaps of obstacles
-       * @param req The service request 
+       * @param req The service request
        * @param resp The service response
        * @return True if the service call succeeds, false otherwise
        */
@@ -112,7 +113,7 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
 
       /**
        * @brief  Load the recovery behaviors for the navigation stack from the parameter server
-       * @param node The ros::NodeHandle to be used for loading parameters 
+       * @param node The ros::NodeHandle to be used for loading parameters
        * @return True if the recovery behaviors were loaded successfully, false otherwise
        */
       bool loadRecoveryBehaviors(ros::NodeHandle node);
@@ -186,6 +187,8 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       double oscillation_timeout_, oscillation_distance_;
 
       NavigateActionServer* as_;
+      local_coverage_navigation::NavigateResult as_result;
+      local_coverage_navigation::NavigateFeedback as_feedback;
 
       LocalCoverageNavigatorState state_;
       RecoveryTrigger recovery_trigger_;
@@ -207,6 +210,7 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       geometry_msgs::PoseStamped planner_goal_;
       boost::thread* planner_thread_;
       boost::thread* test_thread;
+      bool run_test_thread_;
 
       double current_angle;
       double cost_threshold;
@@ -305,4 +309,3 @@ inline void bresenham2D(ActionType& at, unsigned int abs_da, unsigned int abs_db
 }
 };
 #endif
-

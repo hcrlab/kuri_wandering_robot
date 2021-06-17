@@ -34,7 +34,7 @@ local_costmap:
     track_unknown_space: false
 
   bump_obstacle_layer:
-    bump: {clearing: false, data_type: PointCloud2, marking: true, topic: /mobile_base/sensors/bumper_cloud, observation_persistence: 0.0,
+    bump: {clearing: false, data_type: PointCloud2, marking: true, topic: /mobile_base/sensor/bumper_cloud, observation_persistence: 0.0,
            observation_timeout_from_now: 30.0, expected_update_rate: 0.2}
     observation_sources: bump
     track_unknown_space: false
