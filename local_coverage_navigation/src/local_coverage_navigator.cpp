@@ -153,7 +153,10 @@ namespace local_coverage_navigation {
     //we're all set up now so we can start the action server
     as_->start();
 
-    test_thread = new boost::thread(boost::bind(&LocalCoverageNavigator::testThread, this));
+    private_nh.param("run_test_thread", run_test_thread_, true);
+    if (run_test_thread_) {
+      test_thread = new boost::thread(boost::bind(&LocalCoverageNavigator::testThread, this));
+    }
   }
 
 
@@ -334,7 +337,7 @@ inline double abs_angle_diff(const double x, const double y)
       }
       //ROS_INFO_STREAM("Best cost" << cheapest_cost << " Best diff: " << best_angle_diff);
       if (cheapest_cost > cost_threshold) {
-        ROS_ERROR_STREAM("No plan beneath threshold " << cost_threshold);
+        ROS_ERROR_STREAM_THROTTLE(30, "No plan beneath threshold " << cost_threshold);
       } else {
         int goal_xi = abs((int)((cheapest_goal_i % steps4) - steps32)) - half_steps;
         int goal_yi = abs((int)(((cheapest_goal_i + steps) % steps4) - steps32)) - half_steps;
@@ -425,14 +428,34 @@ inline double abs_angle_diff(const double x, const double y)
     ros::NodeHandle n;
     while(n.ok())
     {
+      if (!run_test_thread_) {
+        if (as_->isPreemptRequested())
+        {
+          ROS_INFO("Action Preempted");
+          // set the action state to preempted
+          publishZeroVelocity();
+          as_->setPreempted();
+          return -1;
+        }
+      }
       //for timing that gives real time even in simulation
       ros::WallTime start = ros::WallTime::now();
       //the real work on pursuing a goal is done here
-      bool done = executeCycle();
+      int status = executeCycle();
 
       //if we're done, then we'll return from execute
-      if(done)
+      if (status == 1) {
+        if (!run_test_thread_) {
+          as_->setSucceeded(as_result);
+        }
         return 0;
+      } else if (status == -1) {
+        if (!run_test_thread_) {
+          as_->setAborted(as_result);
+        }
+        return -1;
+      }
+
 
       //check if execution of the goal has completed in some way
 
@@ -447,6 +470,9 @@ inline double abs_angle_diff(const double x, const double y)
 
 
     //if the node is killed then we'll abort and return
+    if (!run_test_thread_) {
+      as_->setAborted(as_result);
+    }
     return -1;
   }
 
@@ -455,7 +481,7 @@ inline double abs_angle_diff(const double x, const double y)
     return hypot(p1.pose.position.x - p2.pose.position.x, p1.pose.position.y - p2.pose.position.y);
   }
 
-  bool LocalCoverageNavigator::executeCycle(){
+  int LocalCoverageNavigator::executeCycle(){
     //boost::recursive_mutex::scoped_lock ecl(configuration_mutex_);
     //we need to be able to publish velocity commands
     geometry_msgs::Twist cmd_vel;
@@ -465,7 +491,10 @@ inline double abs_angle_diff(const double x, const double y)
     geometry_msgs::PoseStamped global_pose;
     getRobotPose(global_pose, controller_costmap_ros_);
     const geometry_msgs::PoseStamped& current_position = global_pose;
-
+    if (!run_test_thread_) {
+      as_feedback.base_position = global_pose;
+      as_->publishFeedback(as_feedback);
+    }
 
     //check to see if we've moved far enough to reset our oscillation timeout
     if(distance(current_position, oscillation_pose_) >= oscillation_distance_)
@@ -482,7 +511,7 @@ inline double abs_angle_diff(const double x, const double y)
     if(!controller_costmap_ros_->isCurrent()){
       ROS_WARN("[%s]:Sensor data is out of date, we're not going to allow commanding of the base for safety",ros::this_node::getName().c_str());
       publishZeroVelocity();
-      return false;
+      return 0;
     }
 
 
@@ -510,7 +539,7 @@ inline double abs_angle_diff(const double x, const double y)
         runPlanner_ = false;
         lock.unlock();
 
-        return true;
+        return -1;
       } else
       {
         ROS_ERROR("Plan set, planner off");
@@ -522,7 +551,7 @@ inline double abs_angle_diff(const double x, const double y)
     //make sure to reset recovery_index_ since we were able to find a valid plan
     if(recovery_trigger_ == PLANNING_R)
       recovery_index_ = 0;
-    
+
 
     //the move_base state machine, handles the control logic for navigation
     switch(state_){
@@ -553,7 +582,7 @@ inline double abs_angle_diff(const double x, const double y)
           runPlanner_ = false;
           lock.unlock();
 
-          return true;
+          return 1;
         }
 
         //check for an oscillation condition
@@ -660,7 +689,7 @@ inline double abs_angle_diff(const double x, const double y)
             ROS_ERROR("Aborting because the robot appears to be oscillating over and over. Even after executing all recovery behaviors");
           }
           resetState();
-          return true;
+          return -1;
         }
         break;
       default:
@@ -670,11 +699,11 @@ inline double abs_angle_diff(const double x, const double y)
         boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
         runPlanner_ = false;
         lock.unlock();
-        return true;
+        return -1;
     }
 
     //we aren't done yet
-    return false;
+    return 0;
   }
 
   bool LocalCoverageNavigator::loadRecoveryBehaviors(ros::NodeHandle node){
