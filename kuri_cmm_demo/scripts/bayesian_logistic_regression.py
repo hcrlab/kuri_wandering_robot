@@ -197,13 +197,19 @@ class BayesianLogisticRegression(object):
         else:
             self.posterior_covariance = np.linalg.inv(covariance_sum)
 
-    def get_probability(self, theta, context):
+    def get_probability(self, context, theta=None):
         """
-        Returns the probability of observing a 1 on context if theta were the
-        true theta
+        Returns the probability of observing a 1 on context. If theta is None,
+        use the posterior districution for theta (using calculations in [1]).
+        Else, assume theta is the true theta
         """
-        human_preference = np.dot(theta, context)
-        return 1.0 / (1+math.exp(-1*human_preference))
+        if theta is None:
+            mu = np.dot(self.posterior_mean.T, context)
+            var = np.dot(context.T, np.dot(self.posterior_covariance, context))
+            return expit((1+np.pi*var/8)**(-0.5)*mu)
+        else:
+            human_preference = np.dot(theta, context)
+            return 1.0 / (1+math.exp(-1*human_preference))
 
     def get_mean(self):
         """

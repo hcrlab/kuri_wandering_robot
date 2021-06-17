@@ -9,7 +9,8 @@ First, you need a remote server to run the Slackbot on. We use an AWS EC2 server
 - In addition to the two security groups listed, add two “Custom TCP Rule”, one for port 8194 and one for post 8193, with “Source” set to “Custom” and “0.0.0.0/0”.
 - Instead of installing `python-pip` we installed `python3-pip`
 - In all instructions that used `pip`, we used `pip3` instead.
-- We installed one additional python package: `sudo pip3 install slack_bolt`
+- We installed this additional system package: `sudo apt-get install python3-opencv`
+- We installed the following additional python packages: `sudo pip3 install slack_bolt`, `sudo pip3 install opencv-python`
 
 Note that you will also likely have to configure GitHub ssh access on the remote computer. We recommend [following the instructions here](https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh).
 
@@ -67,3 +68,4 @@ To test it, open another terminal session on this computer, navigate to `kuri_cm
 
 ## Notes
 - This Slackbot has only been tested with one user in the user list as of now.
+- TODO: add Slash Commands to the slackbot permission configuration section. And App Home.

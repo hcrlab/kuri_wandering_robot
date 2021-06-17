@@ -3,7 +3,7 @@
 
   <!-- Launch the object_detection service -->
   <node pkg="kuri_cmm_demo" type="object_detection.py" name="object_detection" output="screen">
-    <param name='aws_profile_name' value="default"/>
+    <param name='aws_profile_name' value="hcrlab_AmalAWS"/>
     <param name='aws_region_name' value="us-west-2"/>
   </node>
 
@@ -14,5 +14,9 @@
     <param name='slackbot_url' value="http://ec2-34-222-57-139.us-west-2.compute.amazonaws.com:8194"/>
     <param name='send_messages_database_filepath' value="/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl"/>
   </node>
+
+  <!-- Autonomous Navigation -->
+  <param name='/local_coverage_navigator/run_test_thread' value="false"/>
+  <include file="$(find local_coverage_navigation)/launch/kuri_local_navigator.launch" />
 
 </launch>
