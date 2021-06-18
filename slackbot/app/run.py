@@ -387,7 +387,7 @@ class FlaskSlackbot(object):
             mimetype='application/json'
         )
         return response
-
+        #I think add condition to this as well?
     def action_button_check_mark(self, body, ack, say):
         """
         Bolt App callback for when the user clicks the :check_mark: button on
