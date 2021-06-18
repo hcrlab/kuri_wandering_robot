@@ -120,7 +120,7 @@ class CMMDemo(object):
 
     @staticmethod
     def is_similar(most_recent_stored_img_msgs, most_recent_stored_img_vectors,
-        img_msg, img_vector, objects_threshold=8, image_threshold=0.75):
+        img_msg, img_vector, objects_threshold=4.1, image_threshold=0.75, return_similarity=False):
         """
         Returns True if img is sufficiently similar to most_recent_img to not
         sent it, False otherwise. Images are deemed to be similar if there
@@ -135,6 +135,9 @@ class CMMDemo(object):
         similar. The reason we don't do only-histogram is because of changing
         lighting, but the hybrid approach should work well.
         """
+        is_similar = False
+        object_similarities = []
+        image_similarities = []
         for i in range(len(most_recent_stored_img_msgs)):
             most_recent_stored_img_msg = most_recent_stored_img_msgs[i]
             most_recent_stored_img_vector = most_recent_stored_img_vectors[i]
@@ -149,6 +152,7 @@ class CMMDemo(object):
             # Get the total chnge in probability
             change_in_prob = np.sum(different_objects)
             object_is_similar = change_in_prob <= objects_threshold
+            object_similarities.append(change_in_prob)
 
             # Get the similarity of the histograms
             most_recent_sent_img = cv.imdecode(np.fromstring(most_recent_stored_img_msg.data, np.uint8), cv.IMREAD_COLOR)
@@ -160,11 +164,15 @@ class CMMDemo(object):
                 img_hist = cv.calcHist([img],[channel],None,[256],[0,256])
                 avg_histogram_similarity += cv.compareHist(most_recent_stored_img_hist, img_hist, cv.HISTCMP_CORREL)/len(channels)
             image_is_similar = avg_histogram_similarity >= image_threshold
+            image_similarities.append(avg_histogram_similarity)
 
             rospy.loginfo("is_similar object_similarity %f <= %f?, image_similarity %f >= %f?" % (change_in_prob, objects_threshold, avg_histogram_similarity, image_threshold))
             if image_is_similar or object_is_similar:
-                return True
+                is_similar = True
+                if not return_similarity: return True
 
+        if return_similarity:
+            return False, object_similarities, image_similarities
         return False
 
     def img_msg_to_img_vector(self, img_msg):
@@ -376,26 +384,26 @@ class CMMDemo(object):
             image_ids_without_responses = self.sent_messages_database.get_slackbot_img_ids_without_responses()
             try:
             	# Request responses for those image_ids
-            	res = requests.post(
-            		os.path.join(self.slackbot_url, 'get_updates'),
-            		json={'image_ids_and_users':image_ids_without_responses},
-            	)
+                res = requests.post(
+                    os.path.join(self.slackbot_url, 'get_updates'),
+                    json={'image_ids_and_users':image_ids_without_responses},
+                )
                 res_json = res.json()
                 rospy.loginfo("Got updates from Slackbot %s" % res_json)
-            	image_id_to_user_reactions = res_json["image_id_to_user_reactions"]
+                image_id_to_user_reactions = res_json["image_id_to_user_reactions"]
 
-            	updated_users = set()
-            	if len(image_id_to_user_reactions) > 0:
-            	    # Insert reactions into the database
-            	    for image_id in image_id_to_user_reactions:
-            	        for user, reaction in image_id_to_user_reactions[image_id]:
-            	            rospy.loginfo("Got reaction %d from user %s for image_id %s" % (reaction, user, image_id))
-            	            self.sent_messages_database.add_user_reaction(image_id, user, reaction)
-            	            updated_users.add(user)
-            	    self.database_updated()
-            	    for user in updated_users:
-            	        with self.to_send_policy_lock:
-            	            self.to_send_policy.got_reaction(user)
+                updated_users = set()
+                if len(image_id_to_user_reactions) > 0:
+                    # Insert reactions into the database
+                    for image_id in image_id_to_user_reactions:
+                        for user, reaction in image_id_to_user_reactions[image_id]:
+                            rospy.loginfo("Got reaction %d from user %s for image_id %s" % (reaction, user, image_id))
+                            self.sent_messages_database.add_user_reaction(image_id, user, reaction)
+                            updated_users.add(user)
+                    self.database_updated()
+                    for user in updated_users:
+                        with self.to_send_policy_lock:
+                            self.to_send_policy.got_reaction(user)
 
                 time_to_send = res_json["time_to_send"]
                 for user in time_to_send:
@@ -404,7 +412,8 @@ class CMMDemo(object):
                         self.send_images(int(user))
             except Exception as e:
             	rospy.logwarn("Error communicating with Slackbot /get_updates at URL %s." % self.slackbot_url)
-            	rospy.logwarn("Response text %s." % res.text)
+            	if "res" in locals():
+                	rospy.logwarn("Response text %s." % res.text)
             	rospy.logwarn(traceback.format_exc())
             	rospy.logwarn("Error %s." % e)
             r.sleep()

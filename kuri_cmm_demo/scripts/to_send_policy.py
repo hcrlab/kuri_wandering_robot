@@ -15,9 +15,9 @@ class ToSendPolicy(object):
     """
     def __init__(self, sent_messages_database, classes_cache_filepath=None,
         human_priors_and_history_dirpath=None, n_humans=1, default_variance=0.1):
-    	"""
-    	Initialize the an instance of the ToSendPolicy class.
-    	"""
+        """
+        Initialize the an instance of the ToSendPolicy class.
+        """
         # Database Parameters
         self.sent_messages_database = sent_messages_database
         self.n_objects = self.sent_messages_database.get_num_objects()
@@ -85,11 +85,11 @@ class ToSendPolicy(object):
 
     @staticmethod
     def image_to_context(img_vector):
-    	"""
-    	Converts an img_vector to a context vector that is used by the
-    	belief (BayesianLogisticRegression). It does so by prepending
-    	a 1 to the img_vector, to add an intercept term.
-    	"""
+        """
+        Converts an img_vector to a context vector that is used by the
+        belief (BayesianLogisticRegression). It does so by prepending
+        a 1 to the img_vector, to add an intercept term.
+        """
         return np.insert(img_vector, 0, 1., axis=0)
 
     def to_send_policy(self, img_vector):

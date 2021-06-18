@@ -1,0 +1,15 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find kuri_cmm_demo)/cfg/custom_rosconsole.conf"/>
+
+  <!-- Launch the object_detection service -->
+  <node pkg="kuri_cmm_demo" type="object_detection.py" name="object_detection" output="screen">
+    <param name='aws_profile_name' value="hcrlab_AmalAWS"/>
+    <param name='aws_region_name' value="us-west-2"/>
+  </node>
+
+  <!-- Launch the tune_is_similar node -->
+  <node pkg="kuri_cmm_demo" type="tune_is_similar.py" name="tune_is_similar" output="screen">
+    <param name='object_detection_srv' value="object_detection"/>
+  </node>
+
+</launch>
