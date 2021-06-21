@@ -9,7 +9,7 @@ import rospy
 from sensor_msgs.msg import CompressedImage, Image
 # Python Default Libraries
 import base64
-import cv2 as cv
+import cv2
 from enum import Enum
 import numpy as np
 import os
@@ -61,6 +61,19 @@ class CMMDemo(object):
         """
         self.has_loaded = False
 
+        # Load the user data from the Slackbot
+        try:
+            res = requests.get(os.path.join(slackbot_url, 'get_num_users'))
+            self.n_users = res.json()["num_users"]
+        except Exception as e:
+            rospy.logerr("Error communicating with Slackbot /get_num_users at URL %s." % self.slackbot_url)
+            if "res" in locals():
+                rospy.logerr("Response text %s." % res.text)
+            rospy.logerr(traceback.format_exc())
+            rospy.logerr("Error %s." % e)
+            rospy.logerr("Quitting rospy.")
+            rospy.signal_shutdown("Cannot communicate with the slackbot at %s" % self.slackbot_url)
+
         # Parameters relevant to subsampling
         self.subsampling_policy = SubsamplingPolicy(
             rule='n_per_sec', rule_config={'n':1},
@@ -90,12 +103,12 @@ class CMMDemo(object):
 
         # Parameters relevant to storing images and message IDs
         self.send_messages_database_filepath = send_messages_database_filepath
-        self.sent_messages_database = SentMessagesDatabase.load(self.send_messages_database_filepath)
+        self.sent_messages_database = SentMessagesDatabase.load(self.send_messages_database_filepath, self.n_users)
         self.database_save_interval = 5
         self.database_updates_since_last_save = 0
 
         # Parameters relevant to determine whether to send the image
-        self.to_send_policy = ToSendPolicy(self.sent_messages_database)
+        self.to_send_policy = ToSendPolicy(self.sent_messages_database, n_users=self.n_users)
         self.to_send_policy_lock = threading.Lock()
 
         # Parameters relevant to communicating with the Slackbot
@@ -119,8 +132,8 @@ class CMMDemo(object):
             rospy.logdebug("Saved sent_messages_database!")
 
     @staticmethod
-    def is_similar(most_recent_stored_img_msgs, most_recent_stored_img_vectors,
-        img_msg, img_vector, objects_threshold=4.1, image_threshold=0.75, return_similarity=False):
+    def is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors,
+        img_msg, img_vector, objects_threshold=4.0, image_threshold=0.75, return_similarity=False):
         """
         Returns True if img is sufficiently similar to most_recent_img to not
         sent it, False otherwise. Images are deemed to be similar if there
@@ -138,8 +151,8 @@ class CMMDemo(object):
         is_similar = False
         object_similarities = []
         image_similarities = []
-        for i in range(len(most_recent_stored_img_msgs)):
-            most_recent_stored_img_msg = most_recent_stored_img_msgs[i]
+        for i in range(len(most_recent_stored_img_cv2s)):
+            most_recent_stored_img = most_recent_stored_img_cv2s[i]
             most_recent_stored_img_vector = most_recent_stored_img_vectors[i]
 
             # Pad the most_recent_stored_img_vector
@@ -155,14 +168,13 @@ class CMMDemo(object):
             object_similarities.append(change_in_prob)
 
             # Get the similarity of the histograms
-            most_recent_sent_img = cv.imdecode(np.fromstring(most_recent_stored_img_msg.data, np.uint8), cv.IMREAD_COLOR)
-            img = cv.imdecode(np.fromstring(img_msg.data, np.uint8), cv.IMREAD_COLOR)
+            img = cv2.imdecode(np.fromstring(img_msg.data, np.uint8), cv2.IMREAD_COLOR)
             avg_histogram_similarity = 0.0
             channels = [0,1,2]
             for channel in channels:
-                most_recent_stored_img_hist = cv.calcHist([most_recent_sent_img],[channel],None,[256],[0,256])
-                img_hist = cv.calcHist([img],[channel],None,[256],[0,256])
-                avg_histogram_similarity += cv.compareHist(most_recent_stored_img_hist, img_hist, cv.HISTCMP_CORREL)/len(channels)
+                most_recent_stored_img_hist = cv2.calcHist([most_recent_stored_img],[channel],None,[256],[0,256])
+                img_hist = cv2.calcHist([img],[channel],None,[256],[0,256])
+                avg_histogram_similarity += cv2.compareHist(most_recent_stored_img_hist, img_hist, cv2.HISTCMP_CORREL)/len(channels)
             image_is_similar = avg_histogram_similarity >= image_threshold
             image_similarities.append(avg_histogram_similarity)
 
@@ -194,16 +206,16 @@ class CMMDemo(object):
         with self.to_send_policy_lock:
             # Get the image vector
             img_vector = self.to_send_policy.vectorize(detected_objects_msg)
-            return img_vector
+            return img_vector, detected_objects_msg
 
     def send_images(self, user, n_images=5, n_objects=5):
         """
-        Takes in an img_msg and sends it to the Slackbot
+        Sends the top 5 stored images for the user to the Slackbot
         """
         # Get the images the robot thinks the user is likely to like, and
         # compute the likleihood that the user will like them
-        img_msgs, img_vectors, local_img_ids = self.sent_messages_database.get_stored_images_for_user(user)
-        if len(img_msgs) > 0:
+        img_cv2s, img_vectors, detected_objects_msgs, local_img_ids = self.sent_messages_database.get_stored_images_for_user(user)
+        if len(img_cv2s) > 0:
             probabilities = []
             for img_vector in img_vectors:
                 num_new_objects = self.sent_messages_database.get_num_objects() - img_vector.shape[0]
@@ -218,10 +230,10 @@ class CMMDemo(object):
             selected_images_debug_description = []
             selected_local_image_ids = []
             for i in top_img_indices:
-                img_msg = img_msgs[i]
+                img_cv2= img_cv2s[i]
                 local_img_id = local_img_ids[i]
 
-                content = bytearray(img_msg.data)
+                content = bytearray(np.array(cv2.imencode('.jpg', img_cv2)[1]).tostring())
                 selected_images.append(base64.b64encode(content).decode('ascii'))
                 selected_local_image_ids.append(local_img_id)
 
@@ -264,13 +276,14 @@ class CMMDemo(object):
         self.users_to_send_to_final will like. When send_images is called for
         a user, the top n images from that set are sent.
         """
-        img_vector = self.img_msg_to_img_vector(img_msg)
+        img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
         # Get a new message ID
         local_img_id = self.sent_messages_database.get_new_local_img_id()
 
         rospy.loginfo("Store image! For users %s" % self.users_to_send_to_final)
+        img_cv2 = cv2.imdecode(np.fromstring(img_msg.data, np.uint8), cv2.IMREAD_COLOR)
         self.sent_messages_database.add_image(
-            local_img_id, img_msg, img_vector, self.users_to_send_to_final)
+            local_img_id, img_cv2, img_vector, detected_objects_msg, self.users_to_send_to_final)
         self.database_updated()
 
     def subsampled_image(self, img_msg):
@@ -282,8 +295,8 @@ class CMMDemo(object):
 
         TODO: if the state changes from NORMAL, return.
         """
-        rospy.loginfo("Got subsampled image!")
-        img_vector = self.img_msg_to_img_vector(img_msg)
+        rospy.logdebug("Got subsampled image!")
+        img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
 
         # Determine whether to send the image
         with self.to_send_policy_lock:
@@ -297,8 +310,8 @@ class CMMDemo(object):
                 users_to_send_to_initial = np.where(to_send)[0].tolist()
                 self.users_to_send_to_final = []
                 for user in users_to_send_to_initial:
-                    most_recent_stored_img_msgs, most_recent_stored_img_vectors = self.sent_messages_database.get_most_recent_stored_and_sent_images(user)
-                    if not CMMDemo.is_similar(most_recent_stored_img_msgs, most_recent_stored_img_vectors, img_msg, img_vector):
+                    most_recent_stored_img_cv2s, most_recent_stored_img_vectors, _ = self.sent_messages_database.get_most_recent_stored_and_sent_images(user)
+                    if not CMMDemo.is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors, img_msg, img_vector):
                         self.users_to_send_to_final.append(user)
                 rospy.loginfo("most_recent_stored_img_vectors %s" % most_recent_stored_img_vectors)
                 rospy.loginfo("                 img_vector %s" % img_vector)

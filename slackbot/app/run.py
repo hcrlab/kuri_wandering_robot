@@ -128,45 +128,6 @@ class FlaskSlackbot(object):
 
         return image_urls
 
-    # def get_image_url(self, image, message_id):
-    #     """
-    #     Uploads the image to Slack and gets a public URL for it.
-    #
-    #     Input:
-    #     - image bytes
-    #
-    #     Output:
-    #     - if the image upload is succesful, return a public url (string) that
-    #       points to the image
-    #     - else, return None
-    #     """
-    #     filename = message_id+".jpg"
-    #
-    #     # Upload the file
-    #     response = self.slack_app.client.files_upload(
-    #         content=image,
-    #         token=self.slack_user_token,
-    #         filename=filename,
-    #     )
-    #     if not response["ok"]:
-    #         logging.info("Error uploading file %s" % response)
-    #         return
-    #     file_id = response["file"]["id"]
-    #
-    #     # Make it public
-    #     response = self.slack_app.client.files_sharedPublicURL(
-    #         file=file_id,
-    #         token=self.slack_user_token,
-    #     )
-    #     if not response["ok"]:
-    #         logging.info("Error making file public %s" % response)
-    #         return
-    #     permalink_public = response["file"]["permalink_public"]
-    #     team_id, _, pub_secret = os.path.split(permalink_public)[1].split("-")
-    #
-    #     direct_link = "https://files.slack.com/files-pri/" + team_id + "-" + file_id + "/" + filename + "?pub_secret=" + pub_secret
-    #     return direct_link
-
     def get_image_ids(self, images_bytes):
         """
         Takes in a list of the bytes of images. Returns a list of corresponding
@@ -266,60 +227,6 @@ class FlaskSlackbot(object):
         )
         return response
 
-    # def send_image(self):
-    #     """
-    #     POST method at the endpoint /send_image
-    #
-    #     Expects a json payload with keys:
-    #     - 'image' with the ascii-decoding of the base64-encoded bytes
-    #     - 'users' with a list of non-repeating user_i values (ints) that
-    #       index into self.users
-    #
-    #     Returns a json payload with keys:
-    #     - 'num_sent' with the num images sent (<= len(users))
-    #     - 'message_id', which this image will be referred to from hereon out.
-    #     """
-    #     # Decode the request
-    #     image = base64.decodebytes(request.json['image'].encode('ascii'))
-    #     users = request.json['users']
-    #
-    #     message_id = self.sent_messages_database.get_new_message_id()
-    #     self.database_updated()
-    #
-    #     # Get a URL to the image
-    #     direct_link = self.get_image_url(image, message_id)
-    #
-    #     # Send the message
-    #     sent_users = set()
-    #     if direct_link is not None:
-    #         for user_i in users:
-    #             user_i = int(user_i)
-    #             # Ensure user_i values are not repeated
-    #             if user_i in sent_users: continue
-    #             sent_users.add(user_i)
-    #
-    #             # Get the message
-    #             user_id = self.users[user_i]
-    #             payload = slack_template_1(user_id, direct_link)
-    #
-    #             # Send the meessage
-    #             response = self.slack_app.client.chat_postMessage(**payload)
-    #             if not response["ok"]:
-    #                 logging.info("Error sending file to user %s %s" % (user_id, response))
-    #                 continue
-    #             ts = response["message"]["ts"]
-    #
-    #             # Store a reference to the message
-    #             self.sent_messages_database.add_sent_message(message_id, user_id, ts)
-    #             self.database_updated()
-    #
-    #     response = self.flask_app.response_class(
-    #         response=json.dumps({'num_sent': len(sent_users), 'message_id' : message_id}),
-    #         status=200,
-    #         mimetype='application/json'
-    #     )
-    #     return response
-
     def get_num_users(self):
         """
         GET method at the endpoint /get_num_users
@@ -405,33 +312,27 @@ class FlaskSlackbot(object):
         ack()
         self.recv_reaction(body, 0)
 
-    # def get_response_json(self, message_id, user_id, reaction):
-    #     """
-    #     Returns the json payload (as a dict) of a human response of reaction to
-    #     image message_id
-    #     """
-    #     user_i = self.users.index(user_id)
-    #     return {'message_id':message_id, 'user':user_i, 'reaction':reaction}
-
     def recv_reaction(self, body, reaction, num_tries=3):
         """
         Stores the user's reaction.
         """
         # Get the user_id and ts
         user_id = body["user"]["id"]
-        ts = body["container"]["message_ts"]
-        logging.info('Got reaction %s from user %s for message at ts %s' % (reaction, user_id, ts))
+        if user_id in self.users:
+            ts = body["container"]["message_ts"]
+            logging.info('Got reaction %s from user %s for message at ts %s' % (reaction, user_id, ts))
 
-        # Increment the appropriate values
-        self.sent_messages_database.add_reaction(user_id, ts, reaction)
-        self.database_updated()
+            # Increment the appropriate values
+            self.sent_messages_database.add_reaction(user_id, ts, reaction)
+            self.database_updated()
 
-        # Send the next image
-        image_id, direct_link, image_description = self.sent_messages_database.get_next_image_to_send(user_id)
-        self.database_updated()
-        if image_id is not None:
-            self.send_image_to_slack(image_id, direct_link, user_id, image_description)
-
+            # Send the next image
+            image_id, direct_link, image_description = self.sent_messages_database.get_next_image_to_send(user_id)
+            self.database_updated()
+            if image_id is not None:
+                self.send_image_to_slack(image_id, direct_link, user_id, image_description)
+        else:
+            print("Got button click reaction from user_id %s not in self.users, ignoring" % user_id)
 
     def test_get_images(self, ack, say, command, event, respond):
         """
@@ -446,8 +347,11 @@ class FlaskSlackbot(object):
         print("test_get_images", ack, say, command, event, respond)
         # Store that the user requested images.
         user_id = command["user_id"]
-        self.sent_messages_database.add_user_send_image_time(user_id, time.time())
-        self.database_updated()
+        if user_id in self.users:
+            self.sent_messages_database.add_user_send_image_time(user_id, time.time())
+            self.database_updated()
+        else:
+            print("Got /test_get_images from user_id %s not in self.users, ignoring" % user_id)
 
     def start(self):
         """

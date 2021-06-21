@@ -14,7 +14,7 @@ class ToSendPolicy(object):
     responses to the sent images, and updates the belief accordingly.
     """
     def __init__(self, sent_messages_database, classes_cache_filepath=None,
-        human_priors_and_history_dirpath=None, n_humans=1, default_variance=0.1):
+        human_priors_and_history_dirpath=None, n_users=1, default_variance=0.1):
         """
         Initialize the an instance of the ToSendPolicy class.
         """
@@ -24,7 +24,7 @@ class ToSendPolicy(object):
 
         # Load the human preference priors
         self.human_priors_and_history_dirpath = human_priors_and_history_dirpath
-        self.n_humans = n_humans
+        self.n_users = n_users
         self.default_variance = default_variance
         self.load_human_preferences()
 
@@ -39,7 +39,7 @@ class ToSendPolicy(object):
         """
         self.beliefs = []
 
-        for human_i in range(self.n_humans):
+        for human_i in range(self.n_users):
             if self.human_priors_and_history_dirpath is not None and os.path.isfile(self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i):
                 mean_filepath = self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i
                 covariance_filepath = self.human_priors_and_history_dirpath + "human_%d_covariance.npz" % human_i
@@ -78,7 +78,7 @@ class ToSendPolicy(object):
         # Pad stored vectors based on the new dimensionality
         if num_new_objects > 0:
             rospy.logdebug("Added %d new objects" % (num_new_objects))
-            for human_i in range(self.n_humans):
+            for human_i in range(self.n_users):
                 self.beliefs[human_i].add_dimensions(num_new_objects, self.default_variance)
 
         return np.array(img_vector)
@@ -94,15 +94,15 @@ class ToSendPolicy(object):
 
     def to_send_policy(self, img_vector):
         """
-        Returns a boolean vector of size self.n_humans to indicate whether or
+        Returns a boolean vector of size self.n_users to indicate whether or
         not to send an image to each human
         """
         # Add an intercept term to the image
         context = ToSendPolicy.image_to_context(img_vector)
 
         # Determine which human(s) to send it to
-        to_send = np.zeros((self.n_humans,), dtype=np.bool)
-        for human_i in range(self.n_humans):
+        to_send = np.zeros((self.n_users,), dtype=np.bool)
+        for human_i in range(self.n_users):
             # Sample a human preference vector
             sampled_theta = multivariate_normal.rvs(mean=self.beliefs[human_i].get_mean(), cov=self.beliefs[human_i].get_covariance())
 

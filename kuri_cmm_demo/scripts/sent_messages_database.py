@@ -1,6 +1,99 @@
-import rospy
+import cv2
+import json
+import numpy as np
+import os
 import pickle
+import rospy
 import threading
+import time
+
+class ImageLoader(object):
+    def __init__(self, cache_size=300, base_dir="/mayfield/data/kuri_cmm_demo/images"):
+        self.base_dir = base_dir
+        self.cache_size = cache_size
+
+        if not os.path.isdir(self.base_dir):
+            os.makedirs(self.base_dir)
+
+        self.cache = {}
+        self.img_id_order = []
+
+    @staticmethod
+    def detected_objects_msg_to_dict(detected_objects_msg):
+        return {
+            "header" : {
+                "seq" : detected_objects_msg.header.seq,
+                "stamp" : detected_objects_msg.header.stamp.to_sec(),
+                "frame_id" : detected_objects_msg.header.frame_id,
+            },
+            "objects" : [
+                {
+                    "object_name" : object.object_name,
+                    "instances" : [
+                        {
+                            "bbox_width" : instance.bbox_width,
+                            "bbox_height" : instance.bbox_height,
+                            "bbox_left" : instance.bbox_left,
+                            "bbox_top" : instance.bbox_top,
+                            "confidence" : instance.confidence,
+                        }
+                        for instance in object.instances
+                    ],
+                    "parents" : object.parents,
+                    "confidence" : object.confidence,
+                }
+                for object in detected_objects_msg.objects
+            ]
+        }
+
+    def add_to_cache(self, img_id, img_cv2, img_vector, detected_objects_dict):
+        self.cache[img_id] = (img_cv2, img_vector, detected_objects_dict)
+        self.img_id_order.append(img_id)
+        while len(self.img_id_order) > self.cache_size:
+            img_id_to_remove = self.img_id_order.pop(0)
+            self.cache.pop(img_id)
+
+    def add_image(self, img_id, img_cv2, img_vector, detected_objects_msg):
+        """
+        Write the image, then add it to the cache
+
+        TODO: can make the vector representation more efficient by using npz
+        instead of json
+        """
+        img_id = str(img_id)
+        # Save the image
+        # img_data = np.fromstring(img_msg.data, np.uint8)
+        # img_cv2 = cv2.imdecode(img_data, cv2.CV_LOAD_IMAGE_COLOR)
+        cv2.imwrite(os.path.join(self.base_dir, str(img_id)+".jpg"), img_cv2)
+        # Save the vector
+        with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'w') as f:
+            json.dump(img_vector.tolist(), f)
+        # Save the detected objects output
+        detected_objects_dict = ImageLoader.detected_objects_msg_to_dict(detected_objects_msg)
+        with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'w') as f:
+            json.dump(detected_objects_dict, f)
+        # Add to the cache
+        self.add_to_cache(img_id, img_cv2, img_vector, detected_objects_dict)
+
+    def get_images(self, img_ids):
+        """
+        Gets images with the img_ids
+        """
+        retval = []
+        for img_id in img_ids:
+            if img_id in self.cache:
+                retval.append(self.cache[img_id])
+            else:
+                # Load the files from the cache
+                img_cv2 = cv2.imread(os.path.join(self.base_dir, str(img_id)+".jpg"))
+                with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'r') as f:
+                    img_vector = np.array(json.load(f))
+                with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'r') as f:
+                    detected_objects_dict = json.load(f)
+                self.add_to_cache(img_id, img_cv2, img_vector, detected_objects_dict)
+                retval.append((img_cv2, img_vector, detected_objects_dict))
+        return retval
+
 
 class SentMessagesDatabase(object):
     """
@@ -17,18 +110,20 @@ class SentMessagesDatabase(object):
     Note that local_img_ids are not necessarily the same as slackbot_img_ids,
     but might be.
     """
-    def __init__(self):
+    def __init__(self, n_users=1, most_recent_images=5):
         """
         Initialize the database
         """
-        self.num_local_img_ids = 0
+        self.n_users = n_users
+        self.most_recent_images = most_recent_images
 
         # Mapping between the local and Slackbot message IDs
         self.local_img_id_to_slackbot_img_id = {}
         self.slackbot_img_id_to_local_img_id = {}
 
         # Data about stored images
-        self.local_img_id_to_image = {}
+        self.image_loader = ImageLoader(cache_size=int(2.5*self.most_recent_images*self.n_users))
+        self.local_img_ids = set()
         self.user_to_stored_local_img_ids = {}
 
         # Data about sent images
@@ -47,19 +142,18 @@ class SentMessagesDatabase(object):
         Gets a new local image ID
         """
         with self.lock:
-            return self.num_local_img_ids
+            return len(self.local_img_ids)
 
-    def add_image(self, local_img_id, img_msg, img_vector, users):
+    def add_image(self, local_img_id, img_cv2, img_vector, detected_objects_msg, users):
         """
         Add a local message that was sent to Slack users
         """
         with self.lock:
-            if local_img_id in self.local_img_id_to_image:
+            if local_img_id in self.local_img_ids:
                 rospy.logwarn("Overriding local_img_id %s" % local_img_id)
-            else:
-                self.num_local_img_ids += 1
 
-            self.local_img_id_to_image[local_img_id] = (img_msg, img_vector)
+            self.image_loader.add_image(local_img_id, img_cv2, img_vector, detected_objects_msg)
+            self.local_img_ids.add(local_img_id)
 
             for user in users:
                 if user not in self.user_to_stored_local_img_ids:
@@ -72,14 +166,16 @@ class SentMessagesDatabase(object):
         """
         img_msgs = []
         img_vectors = []
+        detected_objects_msgs = []
         local_img_ids = []
         if user in self.user_to_stored_local_img_ids:
             for local_img_id in self.user_to_stored_local_img_ids[user]:
-                img_msg, img_vector = self.local_img_id_to_image[local_img_id]
+                img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
                 img_vectors.append(img_vector)
                 img_msgs.append(img_msg)
+                detected_objects_msgs.append(detected_objects_msg)
                 local_img_ids.append(local_img_id)
-        return img_msgs, img_vectors, local_img_ids
+        return img_msgs, img_vectors, detected_objects_msgs, local_img_ids
 
     def add_slackbot_image_id(self, local_img_ids, slackbot_img_ids, user):
         """
@@ -139,26 +235,30 @@ class SentMessagesDatabase(object):
                         retval[slackbot_img_id].append(user)
             return retval
 
-    def get_most_recent_stored_and_sent_images(self, user, n_images=5):
+    def get_most_recent_stored_and_sent_images(self, user):
         """
-        Returns up to n_images most recent img_msg and img_vector that were
-        stored for user, and up to another n_images that were sent to the user.
+        Returns up to self.most_recent_images most recent img_msg and img_vector
+        that were stored for user, and up to another self.most_recent_images
+        that were sent to the user.
         """
         with self.lock:
             # No image has been sent to this user
             img_msgs = []
             img_vectors = []
+            detected_objects_msgs = []
             if user in self.user_to_stored_local_img_ids:
-                for local_img_id in self.user_to_stored_local_img_ids[user][-n_images:]: # self.user_to_sent_local_img_ids[user][-n_images:]: #
-                    img_msg, img_vector = self.local_img_id_to_image[local_img_id]
+                for local_img_id in self.user_to_stored_local_img_ids[user][-self.most_recent_images:]: # self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: #
+                    img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
                     img_msgs.append(img_msg)
                     img_vectors.append(img_vector)
+                    detected_objects_msgs.append(detected_objects_msg)
             if user in self.user_to_sent_local_img_ids:
-                for local_img_id in self.user_to_sent_local_img_ids[user][-n_images:]: # self.user_to_sent_local_img_ids[user][-n_images:]: #
-                    img_msg, img_vector = self.local_img_id_to_image[local_img_id]
+                for local_img_id in self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: # self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: #
+                    img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
                     img_msgs.append(img_msg)
                     img_vectors.append(img_vector)
-            return img_msgs, img_vectors
+                    detected_objects_msgs.append(detected_objects_msg)
+            return img_msgs, img_vectors, detected_objects_msgs
 
     def get_img_vectors_and_reactions(self, user):
         """
@@ -175,7 +275,7 @@ class SentMessagesDatabase(object):
             for user_temp in self.slackbot_img_id_to_user_to_reaction[slackbot_img_id]:
                 if user_temp != user: continue
                 local_img_id = self.slackbot_img_id_to_local_img_id[slackbot_img_id]
-                img_vector = self.local_img_id_to_image[local_img_id][1]
+                img_vector = self.image_loader.get_images([local_img_id])[0][1]
                 reaction = self.slackbot_img_id_to_user_to_reaction[slackbot_img_id][user]
                 img_vectors.append(img_vector)
                 reactions.append(reaction)
@@ -219,6 +319,7 @@ class SentMessagesDatabase(object):
         retval = SentMessagesDatabase()
         retval.__dict__.update(self.__dict__)
         retval.lock = None
+        retval.image_loader = None # don't save the cache
 
         return retval
 
@@ -239,7 +340,7 @@ class SentMessagesDatabase(object):
                 pickle.dump(self.get_pickleable_shallow_copy(), f)
 
     @staticmethod
-    def load(pkl_filepath):
+    def load(pkl_filepath, n_users=1):
         """
         Attempts to load the SentMessagesDatabase pickle stored at pkl_filepath.
         If this fails, initializes a new SentMessagesDatabase and returns it.
@@ -248,7 +349,8 @@ class SentMessagesDatabase(object):
             with open(pkl_filepath, "rb") as f:
                 sent_messages_database = pickle.load(f)
                 sent_messages_database.lock = threading.Lock()
+                sent_messages_database.image_loader = ImageLoader(cache_size=int(2.5*sent_messages_database.most_recent_images*sent_messages_database.n_users))
                 return sent_messages_database
         except Exception as e:
             rospy.logwarn("Could not load pickled SentMessagesDatabase, initializing new one %s" % e)
-            return SentMessagesDatabase()
+            return SentMessagesDatabase(n_users)
