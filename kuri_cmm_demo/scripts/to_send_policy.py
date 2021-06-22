@@ -59,6 +59,10 @@ class ToSendPolicy(object):
             elif self.n_objects+1 < prior_mean.shape[0]:
                 rospy.logwarn("Error on load_human_preferences, prior size %d is greater than num objects %d" % (prior_mean.shape[0], self.n_objects+1))
 
+        # Recompute the posterior from any past reactions that have been received.
+        for human_i in range(self.n_users):
+            self.got_reaction(human_i)
+
     def vectorize(self, detected_objects_msg):
         """
         Convert a detected_objects_msg to an image vector

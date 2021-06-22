@@ -104,7 +104,7 @@ class CMMDemo(object):
         # Parameters relevant to storing images and message IDs
         self.send_messages_database_filepath = send_messages_database_filepath
         self.sent_messages_database = SentMessagesDatabase.load(self.send_messages_database_filepath, self.n_users)
-        self.database_save_interval = 5
+        self.database_save_interval = 1
         self.database_updates_since_last_save = 0
 
         # Parameters relevant to determine whether to send the image

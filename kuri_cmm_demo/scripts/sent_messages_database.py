@@ -67,11 +67,11 @@ class ImageLoader(object):
         cv2.imwrite(os.path.join(self.base_dir, str(img_id)+".jpg"), img_cv2)
         # Save the vector
         with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'w') as f:
-            json.dump(img_vector.tolist(), f)
+            json.dump(img_vector.tolist(), f, indent=4)
         # Save the detected objects output
         detected_objects_dict = ImageLoader.detected_objects_msg_to_dict(detected_objects_msg)
         with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'w') as f:
-            json.dump(detected_objects_dict, f)
+            json.dump(detected_objects_dict, f, indent=4)
         # Add to the cache
         self.add_to_cache(img_id, img_cv2, img_vector, detected_objects_dict)
 
