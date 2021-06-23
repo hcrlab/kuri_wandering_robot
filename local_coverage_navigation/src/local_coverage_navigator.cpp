@@ -141,6 +141,7 @@ namespace local_coverage_navigation {
 
     //load any user specified recovery behaviors, and if that fails load the defaults
     if(!loadRecoveryBehaviors(private_nh)){
+      ROS_ERROR("Loading default recovery behaviors");
       loadDefaultRecoveryBehaviors();
     }
 
@@ -593,14 +594,15 @@ inline double abs_angle_diff(const double x, const double y)
           publishZeroVelocity();
           state_ = CLEARING;
           recovery_trigger_ = OSCILLATION_R;
+          break;
         }
 
         {
          boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock(*(controller_costmap_ros_->getCostmap()->getMutex()));
 
         if(tc_->computeVelocityCommands(cmd_vel)){
-          ROS_DEBUG_NAMED( "move_base", "Got a valid command from the local planner: %.3lf, %.3lf, %.3lf",
-                           cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z );
+          //ROS_ERROR("Got a valid command from the local planner: %.3lf, %.3lf, %.3lf",
+           //                cmd_vel.linear.x, cmd_vel.linear.y, cmd_vel.angular.z );
           last_valid_control_ = ros::Time::now();
           //make sure that we send the velocity command to the base
           vel_pub_.publish(cmd_vel);
@@ -608,7 +610,7 @@ inline double abs_angle_diff(const double x, const double y)
             recovery_index_ = 0;
         }
         else {
-          ROS_DEBUG_NAMED("move_base", "The local planner could not find a valid plan.");
+          ROS_ERROR("The local planner could not find a valid plan.");
           ros::Time attempt_end = last_valid_control_ + ros::Duration(controller_patience_);
 
           //check if we've tried to find a valid control for longer than our time limit
@@ -621,12 +623,6 @@ inline double abs_angle_diff(const double x, const double y)
           }
           else{
             ROS_ERROR("No valid control, planner on");
-            // HAX: Manual recovery
-            static std::default_random_engine e;
-            static std::uniform_real_distribution<double> dis(-M_PI / 4, M_PI / 4);
-            //current_angle += dis(e);
-            //ROS_ERROR_STREAM("SET ANGLE BY PERTURB" << current_angle);
-            //otherwise, if we can't find a valid control, we'll go back to planning
             last_valid_plan_ = ros::Time::now();
             planning_retries_ = 0;
             state_ = PLANNING;
@@ -645,12 +641,63 @@ inline double abs_angle_diff(const double x, const double y)
 
       //we'll try to clear out space with any user-provided recovery behaviors
       case CLEARING:
-        ROS_DEBUG_NAMED("move_base","In clearing/recovery state");
+        ROS_ERROR("In clearing/recovery state");
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
-        if(recovery_behavior_enabled_ && recovery_index_ < recovery_behaviors_.size()){
-          ROS_DEBUG_NAMED("move_base_recovery","Executing behavior %u of %zu", recovery_index_+1, recovery_behaviors_.size());
+        if(recovery_behavior_enabled_){
+          ROS_ERROR("Executing behavior %u of %zu", recovery_index_+1, recovery_behaviors_.size());
 
-          recovery_behaviors_[recovery_index_]->runBehavior();
+          // HAX: Just gonna implement these here
+          //recovery_behaviors_[recovery_index_]->runBehavior();
+          switch (recovery_index_) {
+          case 0:
+            // TODO: Set a default turn behavior here
+            controller_costmap_ros_->resetLayers();
+            break;
+          case 1: {
+            // Back out
+            auto rate = ros::Rate(10);
+            int i = 0;
+            while (i < 20) {
+              cmd_vel.linear.x = -0.1;
+              cmd_vel.angular.z = 0;
+              vel_pub_.publish(cmd_vel);
+              rate.sleep();
+              i++;
+            }
+            controller_costmap_ros_->resetLayers();
+            break;
+          }
+          case 2: {
+            // CSE2 curb jump
+            auto rate = ros::Rate(10);
+            int i = 0;
+            while (i < 100) {
+              cmd_vel.linear.x = -1;
+              cmd_vel.angular.z = sin(8 * (float)i / 100);
+              vel_pub_.publish(cmd_vel);
+              rate.sleep();
+              i++;
+            }
+            break;
+          }
+          case 3: {
+            // CSE2 curb jump aggressive
+            auto rate = ros::Rate(10);
+            int i = 0;
+            while (i < 100) {
+              cmd_vel.linear.x = -3;
+              cmd_vel.angular.z = 3 * sin(8 * (float)i / 100);
+              vel_pub_.publish(cmd_vel);
+              rate.sleep();
+              i++;
+            }
+            break;
+          }
+          case 4:
+            break;
+          default:
+            break;
+          }
 
           //we at least want to give the robot some time to stop oscillating after executing the behavior
           last_oscillation_reset_ = ros::Time::now();
@@ -802,21 +849,21 @@ inline double abs_angle_diff(const double x, const double y)
 
       //first, we'll load a recovery behavior to clear the costmap
       boost::shared_ptr<nav_core::RecoveryBehavior> cons_clear(recovery_loader_.createInstance("clear_costmap_recovery/ClearCostmapRecovery"));
-      cons_clear->initialize("conservative_reset", &tf_, NULL, controller_costmap_ros_);
+      cons_clear->initialize("conservative_reset", &tf_, controller_costmap_ros_, controller_costmap_ros_);
       recovery_behavior_names_.push_back("conservative_reset");
       recovery_behaviors_.push_back(cons_clear);
 
       //next, we'll load a recovery behavior to rotate in place
       boost::shared_ptr<nav_core::RecoveryBehavior> rotate(recovery_loader_.createInstance("rotate_recovery/RotateRecovery"));
       if(clearing_rotation_allowed_){
-        rotate->initialize("rotate_recovery", &tf_, NULL, controller_costmap_ros_);
+        rotate->initialize("rotate_recovery", &tf_, controller_costmap_ros_, controller_costmap_ros_);
         recovery_behavior_names_.push_back("rotate_recovery");
         recovery_behaviors_.push_back(rotate);
       }
 
       //next, we'll load a recovery behavior that will do an aggressive reset of the costmap
       boost::shared_ptr<nav_core::RecoveryBehavior> ags_clear(recovery_loader_.createInstance("clear_costmap_recovery/ClearCostmapRecovery"));
-      ags_clear->initialize("aggressive_reset", &tf_, NULL, controller_costmap_ros_);
+      ags_clear->initialize("aggressive_reset", &tf_, controller_costmap_ros_, controller_costmap_ros_);
       recovery_behavior_names_.push_back("aggressive_reset");
       recovery_behaviors_.push_back(ags_clear);
 
