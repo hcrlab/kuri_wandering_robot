@@ -1,8 +1,10 @@
 import cv2
+import hashlib
 import json
 import numpy as np
 import os
 import pickle
+import random
 import rospy
 import threading
 import time
@@ -110,12 +112,13 @@ class SentMessagesDatabase(object):
     Note that local_img_ids are not necessarily the same as slackbot_img_ids,
     but might be.
     """
-    def __init__(self, n_users=1, most_recent_images=5):
+    def __init__(self, n_users=1, most_recent_images=5, user_to_learning_condition={0:1}):
         """
         Initialize the database
         """
         self.n_users = n_users
         self.most_recent_images = most_recent_images
+        self.user_to_learning_condition = user_to_learning_condition
 
         # Mapping between the local and Slackbot message IDs
         self.local_img_id_to_slackbot_img_id = {}
@@ -125,6 +128,7 @@ class SentMessagesDatabase(object):
         self.image_loader = ImageLoader(cache_size=int(2.5*self.most_recent_images*self.n_users))
         self.local_img_ids = set()
         self.user_to_stored_local_img_ids = {}
+        self.time_of_last_stored_image_per_user = [time.time() for _ in range(self.n_users)]
 
         # Data about sent images
         self.slackbot_img_id_to_user_to_reaction = {}
@@ -137,12 +141,13 @@ class SentMessagesDatabase(object):
         # TODO: This can be improved with a read-write lock.
         self.lock = threading.Lock()
 
-    def get_new_local_img_id(self):
+    def get_new_local_img_id(self, img_cv2):
         """
         Gets a new local image ID
         """
         with self.lock:
-            return len(self.local_img_ids)
+            # return len(self.local_img_ids)
+            return hashlib.sha1(bytearray(np.array(cv2.imencode('.jpg', img_cv2)[1]).tostring())).hexdigest()
 
     def add_image(self, local_img_id, img_cv2, img_vector, detected_objects_msg, users):
         """
@@ -159,6 +164,11 @@ class SentMessagesDatabase(object):
                 if user not in self.user_to_stored_local_img_ids:
                     self.user_to_stored_local_img_ids[user] = []
                 self.user_to_stored_local_img_ids[user].append(local_img_id)
+                self.time_of_last_stored_image_per_user[user] = time.time()
+
+    def get_time_of_last_stored_image(self, user):
+        with self.lock:
+            return self.time_of_last_stored_image_per_user[user]
 
     def get_stored_images_for_user(self, user):
         """
@@ -175,7 +185,21 @@ class SentMessagesDatabase(object):
                 img_msgs.append(img_msg)
                 detected_objects_msgs.append(detected_objects_msg)
                 local_img_ids.append(local_img_id)
-        return img_msgs, img_vectors, detected_objects_msgs, local_img_ids
+
+        # Randomly sort the lists, so that tie-breaking is randomized
+        final_img_msgs = []
+        final_img_vectors = []
+        final_detected_objects_msgs = []
+        final_local_img_ids = []
+        indices = list(range(len(img_msgs)))
+        random.shuffle(indices)
+        for i in indices:
+            final_img_msgs.append(img_msgs[i])
+            final_img_vectors.append(img_vectors[i])
+            final_detected_objects_msgs.append(detected_objects_msgs[i])
+            final_local_img_ids.append(local_img_ids[i])
+
+        return final_img_msgs, final_img_vectors, final_detected_objects_msgs, final_local_img_ids
 
     def add_slackbot_image_id(self, local_img_ids, slackbot_img_ids, user):
         """
@@ -340,7 +364,7 @@ class SentMessagesDatabase(object):
                 pickle.dump(self.get_pickleable_shallow_copy(), f)
 
     @staticmethod
-    def load(pkl_filepath, n_users=1):
+    def load(pkl_filepath, n_users=1, user_to_learning_condition={0:1}):
         """
         Attempts to load the SentMessagesDatabase pickle stored at pkl_filepath.
         If this fails, initializes a new SentMessagesDatabase and returns it.
@@ -348,9 +372,10 @@ class SentMessagesDatabase(object):
         try:
             with open(pkl_filepath, "rb") as f:
                 sent_messages_database = pickle.load(f)
+                print("sent_messages_database.slackbot_img_id_to_local_img_id", sent_messages_database.slackbot_img_id_to_local_img_id)
                 sent_messages_database.lock = threading.Lock()
                 sent_messages_database.image_loader = ImageLoader(cache_size=int(2.5*sent_messages_database.most_recent_images*sent_messages_database.n_users))
                 return sent_messages_database
         except Exception as e:
             rospy.logwarn("Could not load pickled SentMessagesDatabase, initializing new one %s" % e)
-            return SentMessagesDatabase(n_users)
+            return SentMessagesDatabase(n_users=n_users, user_to_learning_condition=user_to_learning_condition)

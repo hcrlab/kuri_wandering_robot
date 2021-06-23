@@ -2,6 +2,7 @@ from bayesian_logistic_regression import BayesianLogisticRegression
 from kuri_cmm_demo.msg import DetectedObjects
 import math
 import numpy as np
+import random
 import rospy
 from scipy.special import expit
 from scipy.stats import multivariate_normal
@@ -14,7 +15,8 @@ class ToSendPolicy(object):
     responses to the sent images, and updates the belief accordingly.
     """
     def __init__(self, sent_messages_database, classes_cache_filepath=None,
-        human_priors_and_history_dirpath=None, n_users=1, default_variance=0.1):
+        human_priors_and_history_dirpath=None, n_users=1, default_variance=0.1,
+        user_to_learning_condition={0:1}, not_learning_condition_probability=0.005):
         """
         Initialize the an instance of the ToSendPolicy class.
         """
@@ -25,6 +27,8 @@ class ToSendPolicy(object):
         # Load the human preference priors
         self.human_priors_and_history_dirpath = human_priors_and_history_dirpath
         self.n_users = n_users
+        self.user_to_learning_condition = user_to_learning_condition
+        self.not_learning_condition_probability = not_learning_condition_probability
         self.default_variance = default_variance
         self.load_human_preferences()
 
@@ -40,24 +44,28 @@ class ToSendPolicy(object):
         self.beliefs = []
 
         for human_i in range(self.n_users):
-            if self.human_priors_and_history_dirpath is not None and os.path.isfile(self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i):
-                mean_filepath = self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i
-                covariance_filepath = self.human_priors_and_history_dirpath + "human_%d_covariance.npz" % human_i
+            if self.user_to_learning_condition[human_i] == 1:
+                if self.human_priors_and_history_dirpath is not None and os.path.isfile(self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i):
+                    mean_filepath = self.human_priors_and_history_dirpath + "human_%d_mean.npz" % human_i
+                    covariance_filepath = self.human_priors_and_history_dirpath + "human_%d_covariance.npz" % human_i
 
-                prior_mean = np.load(mean_filepath)
-                prior_covariance = np.load(covariance_filepath)
+                    prior_mean = np.load(mean_filepath)
+                    prior_covariance = np.load(covariance_filepath)
+                else:
+                    prior_mean = np.zeros(self.n_objects+1)
+                    prior_covariance = np.zeros((self.n_objects+1, self.n_objects+1))
+                    np.fill_diagonal(prior_covariance, [self.default_variance for _ in range(self.n_objects+1)])
+
+                self.beliefs.append(BayesianLogisticRegression(prior_mean, prior_covariance))
+                # Pad the prior mean and covariance based on the number of objects
+                if self.n_objects+1 > prior_mean.shape[0]:
+                    num_new_objects = self.n_objects+1-prior_mean.shape[0]
+                    self.beliefs[-1].add_dimensions(num_new_objects, self.default_variance)
+                elif self.n_objects+1 < prior_mean.shape[0]:
+                    rospy.logwarn("Error on load_human_preferences, prior size %d is greater than num objects %d" % (prior_mean.shape[0], self.n_objects+1))
             else:
-                prior_mean = np.zeros(self.n_objects+1)
-                prior_covariance = np.zeros((self.n_objects+1, self.n_objects+1))
-                np.fill_diagonal(prior_covariance, [self.default_variance for _ in range(self.n_objects+1)])
+                self.beliefs.append(None)
 
-            self.beliefs.append(BayesianLogisticRegression(prior_mean, prior_covariance))
-            # Pad the prior mean and covariance based on the number of objects
-            if self.n_objects+1 > prior_mean.shape[0]:
-                num_new_objects = self.n_objects+1-prior_mean.shape[0]
-                self.beliefs[-1].add_dimensions(num_new_objects, self.default_variance)
-            elif self.n_objects+1 < prior_mean.shape[0]:
-                rospy.logwarn("Error on load_human_preferences, prior size %d is greater than num objects %d" % (prior_mean.shape[0], self.n_objects+1))
 
         # Recompute the posterior from any past reactions that have been received.
         for human_i in range(self.n_users):
@@ -83,7 +91,8 @@ class ToSendPolicy(object):
         if num_new_objects > 0:
             rospy.logdebug("Added %d new objects" % (num_new_objects))
             for human_i in range(self.n_users):
-                self.beliefs[human_i].add_dimensions(num_new_objects, self.default_variance)
+                if self.user_to_learning_condition[human_i] == 1:
+                    self.beliefs[human_i].add_dimensions(num_new_objects, self.default_variance)
 
         return np.array(img_vector)
 
@@ -107,14 +116,18 @@ class ToSendPolicy(object):
         # Determine which human(s) to send it to
         to_send = np.zeros((self.n_users,), dtype=np.bool)
         for human_i in range(self.n_users):
-            # Sample a human preference vector
-            sampled_theta = multivariate_normal.rvs(mean=self.beliefs[human_i].get_mean(), cov=self.beliefs[human_i].get_covariance())
+            if self.user_to_learning_condition[human_i] == 1:
+                # Sample a human preference vector
+                sampled_theta = multivariate_normal.rvs(mean=self.beliefs[human_i].get_mean(), cov=self.beliefs[human_i].get_covariance())
 
-            # Behave optimally with regards to sampled_theta
-            human_preference = np.dot(sampled_theta, context)
-            probability_of_liking = 1.0 / (1+math.exp(-1*human_preference))
-            if probability_of_liking > (self.human_send_penalty - self.human_dislike_reward)/(self.human_like_reward - self.human_dislike_reward):
-                to_send[human_i] = True
+                # Behave optimally with regards to sampled_theta
+                human_preference = np.dot(sampled_theta, context)
+                probability_of_liking = 1.0 / (1+math.exp(-1*human_preference))
+                if probability_of_liking > (self.human_send_penalty - self.human_dislike_reward)/(self.human_like_reward - self.human_dislike_reward):
+                    to_send[human_i] = True
+            else:
+                if random.random() <= self.not_learning_condition_probability:
+                    to_send[human_i] = True
 
         return to_send
 
@@ -138,13 +151,17 @@ class ToSendPolicy(object):
             contexts[i,1:1+len(img_vector)] = img_vector
 
         # Update the belief
-        self.beliefs[user].compute_posterior(contexts, observations)
-        rospy.loginfo("Recomputed posterior for user %d" % user)
+        if self.user_to_learning_condition[user] == 1:
+            self.beliefs[user].compute_posterior(contexts, observations)
+            rospy.loginfo("Recomputed posterior for user %d" % user)
 
     def get_probability(self, user, img_vector):
         """
         Return the probability that user will like img_vector.
         """
         # Add an intercept term to the image
-        context = ToSendPolicy.image_to_context(img_vector)
-        return self.beliefs[user].get_probability(context)
+        if self.user_to_learning_condition[user] == 1:
+            context = ToSendPolicy.image_to_context(img_vector)
+            return self.beliefs[user].get_probability(context)
+        else:
+            return 0.5
