@@ -57,6 +57,7 @@ class FlaskSlackbot(object):
 
         # Store the Slack users
         self.users = slackbot_conf['users_list']
+        self.users_to_condition = slackbot_conf['users_to_condition']
 
         # Keep track of the images that are sent
         self.sent_messages_database_filepath = sent_messages_database_filepath
@@ -205,7 +206,7 @@ class FlaskSlackbot(object):
         self.sent_messages_database.add_image_urls(image_ids, image_urls)
         self.database_updated(len(image_ids))
 
-        if 'image_descriptions' in request.json:
+        if 'image_descriptions' in request.json and len(request.json['image_descriptions']) == len(image_ids):
             image_descriptions = request.json['image_descriptions']
         else:
             image_descriptions = [None for _ in range(len(image_ids))]
@@ -232,10 +233,21 @@ class FlaskSlackbot(object):
         GET method at the endpoint /get_num_users
         Returns a json payload with keys:
         - 'num_users' with the number of users
+        - 'user_to_learning_condition' where the keys are ints in [0, num_users)
+          and the values are 0 if that user is not in the learning condition and
+          1 otherwise
 
         """
+        user_to_learning_condition = {}
+        for i in range(len(self.users)):
+            user_id = self.users[i]
+            _, learning_condition = self.users_to_condition[user_id]
+            user_to_learning_condition[i] = learning_condition
         response = self.flask_app.response_class(
-            response=json.dumps({'num_users': len(self.users)}),
+            response=json.dumps({
+                'num_users': len(self.users),
+                'user_to_learning_condition': user_to_learning_condition,
+            }),
             status=200,
             mimetype='application/json'
         )

@@ -1,4 +1,5 @@
-users_list: ["", ""]
+users_list: [""] # A list of Slack user IDs, outputted by ../scripts.get_all_users.py
+users_to_condition: {"":[0,1]} # A dictionary of the same length as users_list, where the keys are the user_ids and the values are a list of two integers, the first referring to the "Expressions of Curiosity" factor and the second referring to the "Learning" factor
 # See https://docs.google.com/document/d/1D1hoInDg7urD7bdEWlJYECyfAjihmlJEwYAwjEWbbMM/edit
 # for instructions on setting up a Slackbot and getting its tokens/secrets.
 slack_bot_token: ""

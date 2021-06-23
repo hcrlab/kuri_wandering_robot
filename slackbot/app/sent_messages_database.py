@@ -12,21 +12,10 @@ class SentMessagesDatabase(object):
     Keeps track of image_id, the corresponding (user_id, timestamp)s and the
     users' reactions.
     """
-    def __init__(self):#, message_id_method="numeric"):
+    def __init__(self):
         """
         Initializes a SentMessagesDatabase object.
         """
-        # """
-        # message_id_method can take on the following values:
-        # - "numeric" means that message_ids will start at 0 and increment for
-        #   each new message. message_id will be a string
-        # - "alphanumeric_10" means that message_id will be a unique 10-character
-        #   random alphanumeric string
-        # """
-        # self.message_id_method = message_id_method
-        # if self.message_id_method not in ["numeric", "alphanumeric_10"]:
-        #     logging.info("Unknown message_id_method %s, using \"numeric\"" % message_id_method)
-        #     self.message_id_method = "numeric"
 
         self.image_id_to_url = {}
 
@@ -37,24 +26,6 @@ class SentMessagesDatabase(object):
         self.user_id_to_next_image_send_time = {}
 
         self.user_id_to_remaining_image_urls_to_send = {}
-
-    # def get_new_message_id(self):
-    #     """
-    #     Generates a new unique message_id, and adds it to self.message_ids.
-    #     Returns the message_id.
-    #     """
-    #     if self.message_id_method == "numeric":
-    #         # The message_id is the number of mesages sent before this one
-    #         message_id = str(len(self.message_ids))
-    #     else:
-    #         # The message_id is a random unique alphanumeric string of len 10
-    #         message_id = None
-    #         while message_id is None or message_id in self.message_ids:
-    #             message_id = get_random_alphanumeric_string(10)
-    #
-    #     self.message_ids.add(message_id)
-    #
-    #     return message_id
 
     def get_image_url(self, image_id):
         """
