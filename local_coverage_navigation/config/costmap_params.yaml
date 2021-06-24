@@ -26,7 +26,7 @@ local_costmap:
     - { name: inflation_layer, type: 'costmap_2d::InflationLayer' }
 
 
-  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.60, robot_radius: 0.22}
+  inflation_layer: {cost_scaling_factor: 10.0, enabled: true, inflation_radius: 0.45, robot_radius: 0.34}
 
   scan_obstacle_layer:
     observation_sources: scan

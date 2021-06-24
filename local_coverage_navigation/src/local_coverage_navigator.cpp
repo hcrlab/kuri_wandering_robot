@@ -649,9 +649,22 @@ inline double abs_angle_diff(const double x, const double y)
           // HAX: Just gonna implement these here
           //recovery_behaviors_[recovery_index_]->runBehavior();
           switch (recovery_index_) {
-          case 0:
-            // TODO: Set a default turn behavior here
+          case 0: {
             controller_costmap_ros_->resetLayers();
+            // The planner is going to kick in and blindly make a path through
+            // the empty costmap. Turn in place a bit to fill the map, hopefully
+            // prevent blind arc motions into actual obstacles
+            auto rate = ros::Rate(10);
+            int i = 0;
+            while (i < 120) {
+              cmd_vel.linear.x = 0;
+              cmd_vel.angular.z = .2;
+              vel_pub_.publish(cmd_vel);
+              rate.sleep();
+              i++;
+            }
+
+          }
             break;
           case 1: {
             // Back out
