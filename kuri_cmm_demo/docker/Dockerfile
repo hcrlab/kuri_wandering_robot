@@ -29,6 +29,7 @@ ros-melodic-tf2-geometry-msgs \
 ros-melodic-cv-bridge \
 ros-melodic-ros-control \
 ros-melodic-ros-controllers \
+ros-melodic-control-msgs \
 python-boto3 \
 python-opencv \
 python-numpy \

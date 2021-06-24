@@ -3,30 +3,19 @@ import pickle
 import random
 import time
 
-def get_random_alphanumeric_string(stringLen=10):
-    lettersAndDigits = string.ascii_letters + string.digits
-    return ''.join((random.choice(lettersAndDigits) for i in range(stringLen)))
+# def get_random_alphanumeric_string(stringLen=10):
+#     lettersAndDigits = string.ascii_letters + string.digits
+#     return ''.join((random.choice(lettersAndDigits) for i in range(stringLen)))
 
 class SentMessagesDatabase(object):
     """
     Keeps track of image_id, the corresponding (user_id, timestamp)s and the
     users' reactions.
     """
-    def __init__(self):#, message_id_method="numeric"):
+    def __init__(self):
         """
         Initializes a SentMessagesDatabase object.
         """
-        # """
-        # message_id_method can take on the following values:
-        # - "numeric" means that message_ids will start at 0 and increment for
-        #   each new message. message_id will be a string
-        # - "alphanumeric_10" means that message_id will be a unique 10-character
-        #   random alphanumeric string
-        # """
-        # self.message_id_method = message_id_method
-        # if self.message_id_method not in ["numeric", "alphanumeric_10"]:
-        #     logging.info("Unknown message_id_method %s, using \"numeric\"" % message_id_method)
-        #     self.message_id_method = "numeric"
 
         self.image_id_to_url = {}
 
@@ -35,26 +24,6 @@ class SentMessagesDatabase(object):
         self.user_id_ts_to_image_id = {}
         self.user_id_ts_to_reactions = {}
         self.user_id_to_next_image_send_time = {}
-
-        self.user_id_to_remaining_image_urls_to_send = {}
-
-    # def get_new_message_id(self):
-    #     """
-    #     Generates a new unique message_id, and adds it to self.message_ids.
-    #     Returns the message_id.
-    #     """
-    #     if self.message_id_method == "numeric":
-    #         # The message_id is the number of mesages sent before this one
-    #         message_id = str(len(self.message_ids))
-    #     else:
-    #         # The message_id is a random unique alphanumeric string of len 10
-    #         message_id = None
-    #         while message_id is None or message_id in self.message_ids:
-    #             message_id = get_random_alphanumeric_string(10)
-    #
-    #     self.message_ids.add(message_id)
-    #
-    #     return message_id
 
     def get_image_url(self, image_id):
         """
@@ -74,22 +43,6 @@ class SentMessagesDatabase(object):
             image_url = image_urls[i]
             if image_url is not None:
                 self.image_id_to_url[image_id] = image_url
-
-    def set_remaining_images_to_send(self, user_id, image_ids, image_urls, image_descriptions):
-        """
-        Sets the remaining images to send to this user. image_urls should be a
-        list of strings.
-        """
-        self.user_id_to_remaining_image_urls_to_send[user_id] = list(zip(image_ids, image_urls, image_descriptions))
-
-    def get_next_image_to_send(self, user_id):
-        """
-        Gets the next image_url to send to user_id, or returns None if there us
-        None
-        """
-        if user_id not in self.user_id_to_remaining_image_urls_to_send or len(self.user_id_to_remaining_image_urls_to_send[user_id]) == 0:
-            return None, None, None
-        return self.user_id_to_remaining_image_urls_to_send[user_id].pop(0)
 
     def add_sent_message(self, image_id, user_id, ts):
         """
