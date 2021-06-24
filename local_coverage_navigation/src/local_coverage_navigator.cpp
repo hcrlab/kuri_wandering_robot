@@ -56,7 +56,6 @@ namespace local_coverage_navigation {
     tf_(tf),
    controller_costmap_ros_(NULL),
     blp_loader_("nav_core", "nav_core::BaseLocalPlanner"),
-    recovery_loader_("nav_core", "nav_core::RecoveryBehavior"),
     planner_plan_(NULL), latest_plan_(NULL), controller_plan_(NULL),
     runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
 
@@ -139,12 +138,6 @@ namespace local_coverage_navigation {
       controller_costmap_ros_->stop();
     }
 
-    //load any user specified recovery behaviors, and if that fails load the defaults
-    if(!loadRecoveryBehaviors(private_nh)){
-      ROS_ERROR("Loading default recovery behaviors");
-      loadDefaultRecoveryBehaviors();
-    }
-
     //initially, we'll need to make a plan
     state_ = PLANNING;
 
@@ -203,7 +196,6 @@ namespace local_coverage_navigation {
 
 
   LocalCoverageNavigator::~LocalCoverageNavigator(){
-    recovery_behaviors_.clear();
 
     delete controller_costmap_ros_;
 
@@ -644,7 +636,7 @@ inline double abs_angle_diff(const double x, const double y)
         ROS_ERROR("In clearing/recovery state");
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
         if(recovery_behavior_enabled_){
-          ROS_ERROR("Executing behavior %u of %zu", recovery_index_+1, recovery_behaviors_.size());
+          ROS_ERROR("Executing behavior %u", recovery_index_+1);
 
           // HAX: Just gonna implement these here
           //recovery_behaviors_[recovery_index_]->runBehavior();
@@ -764,132 +756,6 @@ inline double abs_angle_diff(const double x, const double y)
 
     //we aren't done yet
     return 0;
-  }
-
-  bool LocalCoverageNavigator::loadRecoveryBehaviors(ros::NodeHandle node){
-    XmlRpc::XmlRpcValue behavior_list;
-    if(node.getParam("recovery_behaviors", behavior_list)){
-      if(behavior_list.getType() == XmlRpc::XmlRpcValue::TypeArray){
-        for(int i = 0; i < behavior_list.size(); ++i){
-          if(behavior_list[i].getType() == XmlRpc::XmlRpcValue::TypeStruct){
-            if(behavior_list[i].hasMember("name") && behavior_list[i].hasMember("type")){
-              //check for recovery behaviors with the same name
-              for(int j = i + 1; j < behavior_list.size(); j++){
-                if(behavior_list[j].getType() == XmlRpc::XmlRpcValue::TypeStruct){
-                  if(behavior_list[j].hasMember("name") && behavior_list[j].hasMember("type")){
-                    std::string name_i = behavior_list[i]["name"];
-                    std::string name_j = behavior_list[j]["name"];
-                    if(name_i == name_j){
-                      ROS_ERROR("A recovery behavior with the name %s already exists, this is not allowed. Using the default recovery behaviors instead.",
-                          name_i.c_str());
-                      return false;
-                    }
-                  }
-                }
-              }
-            }
-            else{
-              ROS_ERROR("Recovery behaviors must have a name and a type and this does not. Using the default recovery behaviors instead.");
-              return false;
-            }
-          }
-          else{
-            ROS_ERROR("Recovery behaviors must be specified as maps, but they are XmlRpcType %d. We'll use the default recovery behaviors instead.",
-                behavior_list[i].getType());
-            return false;
-          }
-        }
-
-        //if we've made it to this point, we know that the list is legal so we'll create all the recovery behaviors
-        for(int i = 0; i < behavior_list.size(); ++i){
-          try{
-            //check if a non fully qualified name has potentially been passed in
-            if(!recovery_loader_.isClassAvailable(behavior_list[i]["type"])){
-              std::vector<std::string> classes = recovery_loader_.getDeclaredClasses();
-              for(unsigned int i = 0; i < classes.size(); ++i){
-                if(behavior_list[i]["type"] == recovery_loader_.getName(classes[i])){
-                  //if we've found a match... we'll get the fully qualified name and break out of the loop
-                  ROS_WARN("Recovery behavior specifications should now include the package name. You are using a deprecated API. Please switch from %s to %s in your yaml file.",
-                      std::string(behavior_list[i]["type"]).c_str(), classes[i].c_str());
-                  behavior_list[i]["type"] = classes[i];
-                  break;
-                }
-              }
-            }
-
-            boost::shared_ptr<nav_core::RecoveryBehavior> behavior(recovery_loader_.createInstance(behavior_list[i]["type"]));
-
-            //shouldn't be possible, but it won't hurt to check
-            if(behavior.get() == NULL){
-              ROS_ERROR("The ClassLoader returned a null pointer without throwing an exception. This should not happen");
-              return false;
-            }
-
-            //initialize the recovery behavior with its name
-            behavior->initialize(behavior_list[i]["name"], &tf_, controller_costmap_ros_, controller_costmap_ros_);
-            recovery_behavior_names_.push_back(behavior_list[i]["name"]);
-            recovery_behaviors_.push_back(behavior);
-          }
-          catch(pluginlib::PluginlibException& ex){
-            ROS_ERROR("Failed to load a plugin. Using default recovery behaviors. Error: %s", ex.what());
-            return false;
-          }
-        }
-      }
-      else{
-        ROS_ERROR("The recovery behavior specification must be a list, but is of XmlRpcType %d. We'll use the default recovery behaviors instead.",
-            behavior_list.getType());
-        return false;
-      }
-    }
-    else{
-      //if no recovery_behaviors are specified, we'll just load the defaults
-      return false;
-    }
-
-    //if we've made it here... we've constructed a recovery behavior list successfully
-    return true;
-  }
-
-  //we'll load our default recovery behaviors here
-  void LocalCoverageNavigator::loadDefaultRecoveryBehaviors(){
-    recovery_behaviors_.clear();
-    try{
-      //we need to set some parameters based on what's been passed in to us to maintain backwards compatibility
-      ros::NodeHandle n("~");
-      n.setParam("conservative_reset/reset_distance", conservative_reset_dist_);
-      n.setParam("aggressive_reset/reset_distance", circumscribed_radius_ * 4);
-
-      //first, we'll load a recovery behavior to clear the costmap
-      boost::shared_ptr<nav_core::RecoveryBehavior> cons_clear(recovery_loader_.createInstance("clear_costmap_recovery/ClearCostmapRecovery"));
-      cons_clear->initialize("conservative_reset", &tf_, controller_costmap_ros_, controller_costmap_ros_);
-      recovery_behavior_names_.push_back("conservative_reset");
-      recovery_behaviors_.push_back(cons_clear);
-
-      //next, we'll load a recovery behavior to rotate in place
-      boost::shared_ptr<nav_core::RecoveryBehavior> rotate(recovery_loader_.createInstance("rotate_recovery/RotateRecovery"));
-      if(clearing_rotation_allowed_){
-        rotate->initialize("rotate_recovery", &tf_, controller_costmap_ros_, controller_costmap_ros_);
-        recovery_behavior_names_.push_back("rotate_recovery");
-        recovery_behaviors_.push_back(rotate);
-      }
-
-      //next, we'll load a recovery behavior that will do an aggressive reset of the costmap
-      boost::shared_ptr<nav_core::RecoveryBehavior> ags_clear(recovery_loader_.createInstance("clear_costmap_recovery/ClearCostmapRecovery"));
-      ags_clear->initialize("aggressive_reset", &tf_, controller_costmap_ros_, controller_costmap_ros_);
-      recovery_behavior_names_.push_back("aggressive_reset");
-      recovery_behaviors_.push_back(ags_clear);
-
-      //we'll rotate in-place one more time
-      if(clearing_rotation_allowed_){
-        recovery_behaviors_.push_back(rotate);
-        recovery_behavior_names_.push_back("rotate_recovery");
-      }
-    }
-    catch(pluginlib::PluginlibException& ex){
-      ROS_FATAL("Failed to load a plugin. This should not happen on default recovery behaviors. Error: %s", ex.what());
-    }
-
   }
 
   void LocalCoverageNavigator::resetState(){

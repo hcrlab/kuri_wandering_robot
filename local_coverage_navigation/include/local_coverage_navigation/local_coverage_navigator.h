@@ -112,18 +112,6 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       bool clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 
       /**
-       * @brief  Load the recovery behaviors for the navigation stack from the parameter server
-       * @param node The ros::NodeHandle to be used for loading parameters
-       * @return True if the recovery behaviors were loaded successfully, false otherwise
-       */
-      bool loadRecoveryBehaviors(ros::NodeHandle node);
-
-      /**
-       * @brief  Loads the default recovery behaviors for the navigation stack
-       */
-      void loadDefaultRecoveryBehaviors();
-
-      /**
        * @brief  Clears obstacles within a window around the robot
        * @param size_x The x size of the window
        * @param size_y The y size of the window
@@ -168,9 +156,6 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
 
       std::string robot_base_frame_, global_frame_;
 
-
-      std::vector<boost::shared_ptr<nav_core::RecoveryBehavior> > recovery_behaviors_;
-      std::vector<std::string> recovery_behavior_names_;
       unsigned int recovery_index_;
 
       geometry_msgs::PoseStamped global_pose_;
@@ -196,7 +181,6 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       ros::Time last_valid_plan_, last_valid_control_, last_oscillation_reset_;
       geometry_msgs::PoseStamped oscillation_pose_;
       pluginlib::ClassLoader<nav_core::BaseLocalPlanner> blp_loader_;
-      pluginlib::ClassLoader<nav_core::RecoveryBehavior> recovery_loader_;
 
       //set up plan triple buffer
       std::vector<geometry_msgs::PoseStamped>* planner_plan_;

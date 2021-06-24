@@ -19,7 +19,6 @@
 
     <!--<rosparam file="$(find kuri_navigation)/config/nav_params/base_local_planner_params.yaml" command="load" />-->
     <rosparam file="$(find local_coverage_navigation)/config/dwa_local_planner_params.yaml" command="load" />
-    <rosparam file="$(find local_coverage_navigation)/config/recovery_behaviors.yaml" command="load" />
 
     <rosparam file="$(find local_coverage_navigation)/config/move_base_params.yaml" command="load"/>
 
