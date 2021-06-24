@@ -12,11 +12,9 @@ import cv2
 import threading
 import math
 from scipy.ndimage.measurements import label
-import time
 
 class ViewTuner(object):
-    def __init__(self, head_state_topic, secs_of_stationary_before_returning=10,
-        eps=0.05):
+    def __init__(self, head_state_topic):
         """
         Uses an approach from https://www.researchgate.net/profile/Aaron-Steinfeld/publication/220939264_An_assisted_photography_method_for_street_scenes/links/02e7e51e569d3720f6000000/An-assisted-photography-method-for-street-scenes.pdf
         """
@@ -29,15 +27,6 @@ class ViewTuner(object):
         self.lk_params = dict(winSize  = (15,15),
                          maxLevel = 2,
                          criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03))
-
-        # If the head joint hasn't moved more than self.eps away from the joint
-        # position, assume the motor is stalled or the head is stuck or something
-        # and return done from tuning
-        self.eps = eps
-        self.secs_of_stationary_before_returning = secs_of_stationary_before_returning
-        self.latest_pan_center = None
-        self.latest_tilt_center = None
-        self.latest_head_state_time = None
 
         # Initialize the head state topics
         self.current_pan = None
@@ -171,20 +160,11 @@ class ViewTuner(object):
         with self.head_state_lock:
             current_pan = self.current_pan
             current_tilt = self.current_tilt
-            latest_head_state_time = self.latest_head_state_time
-
-        # If the head is not moving, return
-        if (time.time() - latest_head_state_time) >= self.secs_of_stationary_before_returning:
-            if return_annotated_img:
-                return True, img_annotated
-            return True
 
         # If the head is already at the most extreme positions in the direction
         # of the goal, return
-        if (((current_pan >= self.head_pan_max-self.eps and dx_to_center<0) or
-             (current_pan <= self.head_pan_min+self.eps and dx_to_center>=0)) and
-            ((current_tilt >= self.head_tilt_max-self.eps and dy_to_center>0) or
-             (current_tilt <= self.head_tilt_min+self.eps and dy_to_center<0))):
+        eps = 0.05
+        if ((current_pan >= self.head_pan_max-eps and dx_to_center<0) or (current_pan <= self.head_pan_min+eps and dx_to_center>=0)) and ((current_tilt >= self.head_tilt_max-eps and dy_to_center>0) or (current_tilt <= self.head_tilt_min+eps and dy_to_center<0)):
             # We are already at the most extreme head orientation, and can't move closer to the center of saliency.
             if return_annotated_img:
                 return True, img_annotated
@@ -290,11 +270,3 @@ class ViewTuner(object):
         with self.head_state_lock:
             self.current_pan = current_pan
             self.current_tilt = current_tilt
-            if self.latest_head_state_time is None:
-                self.latest_pan_center = current_pan
-                self.latest_tilt_center = current_tilt
-                self.latest_head_state_time = time.time()
-            elif abs(self.latest_pan_center - current_pan) > self.eps or abs(self.latest_tilt_center - current_tilt) > self.eps:
-                self.latest_pan_center = current_pan
-                self.latest_tilt_center = current_tilt
-                self.latest_head_state_time = time.time()
