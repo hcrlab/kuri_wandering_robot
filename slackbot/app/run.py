@@ -1,4 +1,5 @@
 import base64
+import csv
 import cv2 # remove after I finish debugging images
 import datetime
 from flask import Flask, request
@@ -7,11 +8,12 @@ import json
 import logging
 import numpy as np # remove after I finish debugging images
 import os
+import pprint
 import random
 import requests
 from sent_messages_database import SentMessagesDatabase
 from slack_bolt import App
-from slack_templates import slack_template_1
+import slack_templates
 import string
 import sys
 import threading
@@ -22,7 +24,7 @@ import yaml
 class FlaskSlackbot(object):
     def __init__(self, slackbot_conf, flask_port=8194, slack_port=8193,
         sent_messages_database_filepath="../cfg/sent_messages_database.pkl",
-        database_save_interval=1):
+        database_save_interval=1, data_base_dir="/home/ubuntu/kuri_cmm_demo/data/"):
         """
         Create the FlaskSlackbot.
 
@@ -53,11 +55,32 @@ class FlaskSlackbot(object):
         self.slack_port = slack_port
         self.slack_app.action("action_id_check_mark")(self.action_button_check_mark)
         self.slack_app.action("action_id_x")(self.action_button_x)
-        self.slack_app.command("/test_get_images")(self.test_get_images)
+        self.slack_app.action("confirm_input")(self.confirm_input)
+        self.slack_app.command("/test_get_images_2")(self.test_get_images)
 
         # Store the Slack users
         self.users = slackbot_conf['users_list']
         self.users_to_condition = slackbot_conf['users_to_condition']
+
+        # Configure data storage
+        self.data_base_dir = data_base_dir
+        if not os.path.isdir(self.data_base_dir):
+            os.makedirs(self.data_base_dir)
+        # Each variable below contains the filename and the header row
+        self.received_images_csv = ("received_images.csv", ["Time", "Filepath", "Image ID", "Image URL", "Slackbot User ID", "Robot User ID"])
+        self.sent_images_csv = ("sent_images.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp"])
+        self.reactions_csv = ("reactions.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Reaction"])
+        self.followups_csv = ("followups.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Question", "Response"])
+        self.survey_csv = ("survey.csv", ["Time", "Survey Random ID", "Slackbot User ID", "Message Timestamp"])
+        for csv_filename, csv_header in [self.received_images_csv, self.sent_images_csv, self.reactions_csv, self.followups_csv, self.survey_csv]:
+            csv_filepath = os.path.join(self.data_base_dir, csv_filename)
+            if not os.path.exists(csv_filepath):
+                with open(csv_filepath, "w") as f:
+                    csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csv_writer.writerow(csv_header)
+        self.images_base_dir = os.path.join(self.data_base_dir, "images/")
+        if not os.path.isdir(self.images_base_dir):
+            os.makedirs(self.images_base_dir)
 
         # Keep track of the images that are sent
         self.sent_messages_database_filepath = sent_messages_database_filepath
@@ -143,24 +166,56 @@ class FlaskSlackbot(object):
             image_ids.append(image_id)
         return image_ids
 
-    def send_image_to_slack(self, image_id, direct_link, user_id, image_description):
+    def send_images_to_slack(self, image_ids, image_urls, user_id, image_descriptions):
         """
-        Actually sends the Slack message. Returns a boolean indicating whether
+        Actually sends the Slack messages. Returns a boolean indicating whether
         the send was succesful or not.
         """
-        payload = slack_template_1(user_id, direct_link, image_description)
+        n_images = min(len(image_ids), len(image_urls))
+        n_successes = 0
 
-        # Send the message
-        response = self.slack_app.client.chat_postMessage(**payload)
-        if not response["ok"]:
-            logging.info("Error sending file to user %s %s" % (user_id, response))
-            return False
-        ts = response["message"]["ts"]
+        for i in range(-1, n_images):
+            if i == -1:
+                image_url = ""
+                payload = slack_templates.post_images_intro(user_id, n_images)
+            else:
+                image_url = image_urls[i]
+                payload = slack_templates.post_image(user_id, image_url, image_descriptions[i], i, n_images)
 
-        # Store a reference to the message
-        self.sent_messages_database.add_sent_message(image_id, user_id, ts)
-        self.database_updated()
-        return True
+            # Send the message
+            response = self.slack_app.client.chat_postMessage(**payload)
+            if not response["ok"]:
+                logging.info("Error sending file to user %s: %s" % (user_id, response))
+                continue
+            ts = response["message"]["ts"]
+
+            # Store a reference to the message
+            if i > -1:
+                self.sent_messages_database.add_sent_message(image_ids[i], user_id, ts)
+                self.database_updated()
+
+            # Save it in the CSV
+            csv_filepath = os.path.join(self.data_base_dir, self.sent_images_csv[0])
+            with open(csv_filepath, "a") as f:
+                csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csv_writer.writerow([time.time(), image_url, user_id, ts])
+            n_successes += 1
+
+        return n_successes
+
+    def save_images(self, images_bytes, image_ids):
+        """
+        Saves the images
+        """
+        image_filepaths = []
+        for i in range(len(images_bytes)):
+            image_bytes = images_bytes[i]
+            image_id = image_ids[i]
+            image_cv2 = cv2.imdecode(np.fromstring(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+            filepath = os.path.join(self.images_base_dir, str(image_id)+".jpg")
+            cv2.imwrite(filepath, image_cv2)
+            image_filepaths.append(filepath)
+        return image_filepaths
 
     def send_images(self):
         """
@@ -185,13 +240,26 @@ class FlaskSlackbot(object):
             image_bytes = base64.decodebytes(image.encode('ascii')) # image.encode("utf-8") #
             images_bytes.append(image_bytes)
         user = request.json['user']
+        user_id = self.users[user]
 
         image_ids = self.get_image_ids(images_bytes)
+        image_filepaths = self.save_images(images_bytes, image_ids)
 
         # Get a URL to the image, and remove failed URLs
         image_ids_to_return = []
         image_urls = self.get_image_urls(images_bytes, image_ids)
         print("image_ids", image_ids, "image_urls", image_urls)
+
+        # Save it in the CSV
+        csv_filepath = os.path.join(self.data_base_dir, self.received_images_csv[0])
+        with open(csv_filepath, "a") as f:
+            csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for i in range(len(image_ids)):
+                image_id = image_ids[i]
+                image_url = image_urls[i]
+                image_filepath = image_filepaths[i]
+                csv_writer.writerow([time.time(), image_filepath, image_id, "" if image_url is None else image_url, user_id, user])
+
         i = 0
         while i < len(image_ids):
             image_id = image_ids[i]
@@ -211,18 +279,10 @@ class FlaskSlackbot(object):
         else:
             image_descriptions = [None for _ in range(len(image_ids))]
 
-        # Send the first message
-        image_id = image_ids.pop(0)
-        direct_link = image_urls.pop(0)
-        image_description = image_descriptions.pop(0)
-        user_id = self.users[user]
-        send_result = self.send_image_to_slack(image_id, direct_link, user_id, image_description)
-
-        # Update the images to send
-        self.sent_messages_database.set_remaining_images_to_send(user_id, image_ids, image_urls, image_descriptions)
+        n_successes = self.send_images_to_slack(image_ids, image_urls, user_id, image_descriptions)
 
         response = self.flask_app.response_class(
-            response=json.dumps({'image_ids':image_ids_to_return, 'first_send_image_state':send_result}),
+            response=json.dumps({'image_ids':image_ids_to_return, 'n_successes':n_successes}),
             status=200,
             mimetype='application/json'
         )
@@ -307,44 +367,119 @@ class FlaskSlackbot(object):
         )
         return response
         #I think add condition to this as well?
-    def action_button_check_mark(self, body, ack, say):
+    def action_button_check_mark(self, body, ack, say, action, respond):
         """
         Bolt App callback for when the user clicks the :check_mark: button on
         a message
         """
         # Acknowledge the action
         ack()
-        self.recv_reaction(body, 1)
+        self.recv_reaction(body, respond, 1)
 
-    def action_button_x(self, body, ack, say):
+    def action_button_x(self, body, ack, say, action, respond):
         """
         Bolt App callback for when the user clicks the :x: button on a message
         """
         # Acknowledge the action
         ack()
-        self.recv_reaction(body, 0)
+        self.recv_reaction(body, respond, 0)
 
-    def recv_reaction(self, body, reaction, num_tries=3):
+    def body_to_image_url(self, body):
+        """
+        Given a Slackbot message body, return the first image_url in the
+        message if it exists, else None.
+        TODO: this can be hardcoded once we fix a particular template message
+        """
+        if "message" not in body: return None
+        if "blocks" not in body["message"]: return None
+        for block in body["message"]["blocks"]:
+            if "type" not in block: continue
+            if block["type"] == "image":
+                if "image_url" not in block: continue
+                return block["image_url"]
+        return None
+
+    def recv_reaction(self, body, respond, reaction):
         """
         Stores the user's reaction.
         """
         # Get the user_id and ts
         user_id = body["user"]["id"]
+        ts = body["container"]["message_ts"]
+        image_url = self.body_to_image_url(body)
+
+        # Send the followup question
+        response = slack_templates.action_button_check_mark_or_x(body, user_id, self.users_to_condition[user_id][0], reaction)
+        respond(response)
+        # response = self.slack_app.client.chat_update(channel=body["container"]["channel_id"], ts=ts, **response)
+        # if not response["ok"]:
+        #     logging.info("Error sending file to user %s: %s" % (user_id, response))
+
+        # Save it in the CSV
+        csv_filepath = os.path.join(self.data_base_dir, self.reactions_csv[0])
+        with open(csv_filepath, "a") as f:
+            csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csv_writer.writerow([time.time(), image_url, user_id, ts, reaction])
+
         if user_id in self.users:
-            ts = body["container"]["message_ts"]
             logging.info('Got reaction %s from user %s for message at ts %s' % (reaction, user_id, ts))
 
             # Increment the appropriate values
             self.sent_messages_database.add_reaction(user_id, ts, reaction)
             self.database_updated()
-
-            # Send the next image
-            image_id, direct_link, image_description = self.sent_messages_database.get_next_image_to_send(user_id)
-            self.database_updated()
-            if image_id is not None:
-                self.send_image_to_slack(image_id, direct_link, user_id, image_description)
         else:
             print("Got button click reaction from user_id %s not in self.users, ignoring" % user_id)
+
+    def body_to_question_answer(self, body):
+        """
+        Given a Slackbot message body, return the first input field's question
+        and answer if it exists, else None.
+        TODO: this can be hardcoded once we fix a particular template message
+        TODO: this is horrible style, TBH I should use a try/except block to
+        make this more readable. Same with body_to_image_url
+        """
+        if "message" not in body: return None, None
+        if "blocks" not in body["message"]: return None, None
+        for block in body["message"]["blocks"]:
+            if "type" not in block: continue
+            if block["type"] == "input":
+                if "block_id" not in block: continue
+                block_id = block["block_id"]
+                if "label" not in block or "text" not in block["label"]:
+                    continue
+                question = block["label"]["text"]
+                if "state" not in body or "values" not in body["state"] or block_id not in body["state"]["values"] or "plain_input" not in body["state"]["values"][block_id] or "value" not in body["state"]["values"][block_id]["plain_input"]:
+                    continue
+                answer = body["state"]["values"][block_id]["plain_input"]["value"]
+                return question, answer
+        return None, None
+
+    def confirm_input(self, body, ack, say, action, respond):
+        """
+        Bolt App callback for when the user clicks the confirm button on their input
+        """
+        ack()
+        # Get the user_id and ts
+        user_id = body["user"]["id"]
+        ts = body["container"]["message_ts"]
+        image_url = self.body_to_image_url(body)
+
+        question, answer = self.body_to_question_answer(body)
+        if question is None: question = ""
+        if answer is None: answer = ""
+
+        # Update the blocks
+        response = slack_templates.confirm_input_template(body, user_id, question, answer)
+        # respond(response)
+        response = self.slack_app.client.chat_update(channel=body["container"]["channel_id"], ts=ts, **response)
+        if not response["ok"]:
+            logging.info("Error sending file to user %s: %s" % (user_id, response))
+
+        # Save it in the CSV
+        csv_filepath = os.path.join(self.data_base_dir, self.followups_csv[0])
+        with open(csv_filepath, "a") as f:
+            csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            csv_writer.writerow([time.time(), image_url, user_id, ts, question, answer])
 
     def test_get_images(self, ack, say, command, event, respond):
         """

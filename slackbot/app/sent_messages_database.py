@@ -3,9 +3,9 @@ import pickle
 import random
 import time
 
-def get_random_alphanumeric_string(stringLen=10):
-    lettersAndDigits = string.ascii_letters + string.digits
-    return ''.join((random.choice(lettersAndDigits) for i in range(stringLen)))
+# def get_random_alphanumeric_string(stringLen=10):
+#     lettersAndDigits = string.ascii_letters + string.digits
+#     return ''.join((random.choice(lettersAndDigits) for i in range(stringLen)))
 
 class SentMessagesDatabase(object):
     """
@@ -25,8 +25,6 @@ class SentMessagesDatabase(object):
         self.user_id_ts_to_reactions = {}
         self.user_id_to_next_image_send_time = {}
 
-        self.user_id_to_remaining_image_urls_to_send = {}
-
     def get_image_url(self, image_id):
         """
         Returns the image_url if it exists in self.image_id_to_url, else None.
@@ -45,22 +43,6 @@ class SentMessagesDatabase(object):
             image_url = image_urls[i]
             if image_url is not None:
                 self.image_id_to_url[image_id] = image_url
-
-    def set_remaining_images_to_send(self, user_id, image_ids, image_urls, image_descriptions):
-        """
-        Sets the remaining images to send to this user. image_urls should be a
-        list of strings.
-        """
-        self.user_id_to_remaining_image_urls_to_send[user_id] = list(zip(image_ids, image_urls, image_descriptions))
-
-    def get_next_image_to_send(self, user_id):
-        """
-        Gets the next image_url to send to user_id, or returns None if there us
-        None
-        """
-        if user_id not in self.user_id_to_remaining_image_urls_to_send or len(self.user_id_to_remaining_image_urls_to_send[user_id]) == 0:
-            return None, None, None
-        return self.user_id_to_remaining_image_urls_to_send[user_id].pop(0)
 
     def add_sent_message(self, image_id, user_id, ts):
         """
