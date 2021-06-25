@@ -100,7 +100,7 @@ class CMMDemo(object):
             self.bridge = CvBridge()
 
         # Parameters relevant to local navigation
-        self.local_coverage_navigator_action = actionlib.SimpleActionClient('/navigate', NavigateAction)
+        self.local_coverage_navigator_action = actionlib.SimpleActionClient('/local_coverage_navigator/navigate', NavigateAction)
 
         # Parameters relevant to object detection
         self.object_detection_srv_name = object_detection_srv
