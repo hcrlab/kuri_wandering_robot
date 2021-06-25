@@ -71,7 +71,7 @@ namespace local_coverage_navigation {
     private_nh.param("base_local_planner", local_planner, std::string("base_local_planner/TrajectoryPlannerROS"));
     private_nh.param("local_costmap/robot_base_frame", robot_base_frame_, std::string("base_link"));
     private_nh.param("local_costmap/global_frame", global_frame_, std::string("odom"));
-    private_nh.param("planner_frequency", planner_frequency_, 0.0);
+    private_nh.param("planner_frequency", planner_frequency_, 2.0);
     private_nh.param("controller_frequency", controller_frequency_, 20.0);
     private_nh.param("planner_patience", planner_patience_, 5.0);
     private_nh.param("controller_patience", controller_patience_, 15.0);
@@ -266,16 +266,15 @@ inline double abs_angle_diff(const double x, const double y)
     ros::NodeHandle n;
     ros::Timer timer;
     bool wait_for_wake = false;
-
-
+    auto planner_rate = ros::Rate(planner_frequency_);
     boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
     current_angle = 0;
-    cost_threshold = 0;
+    cost_threshold = 1000;
     while(n.ok()){
       //check if we should run the planner (the mutex is locked)
       while(wait_for_wake || !runPlanner_){
         //if we should not be running the planner then suspend this thread
-        ROS_DEBUG_NAMED("move_base_plan_thread","Planner thread is suspending");
+        ROS_ERROR("move_base_plan_thread","Planner thread is suspending");
         planner_cond_.wait(lock);
         wait_for_wake = false;
       }
@@ -308,7 +307,7 @@ inline double abs_angle_diff(const double x, const double y)
         raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
         double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
         double angle_diff = abs_angle_diff(current_angle, angle);
-        //ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
+        ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
         if (line_cost.cost < cheapest_cost) {
           cheapest_cost = line_cost.cost;
           cheapest_goal_i = i;
@@ -321,7 +320,8 @@ inline double abs_angle_diff(const double x, const double y)
       }
       //ROS_INFO_STREAM("Best cost" << cheapest_cost << " Best diff: " << best_angle_diff);
       if (cheapest_cost > cost_threshold) {
-        ROS_ERROR_STREAM_THROTTLE(30, "No plan beneath threshold " << cost_threshold);
+
+        ROS_ERROR_STREAM_THROTTLE(1, "No plan beneath threshold " << cost_threshold);
       } else {
         int goal_xi = abs((int)((cheapest_goal_i % steps4) - steps32)) - half_steps;
         int goal_yi = abs((int)(((cheapest_goal_i + steps) % steps4) - steps32)) - half_steps;
@@ -339,52 +339,60 @@ inline double abs_angle_diff(const double x, const double y)
         this->controller_costmap_ros_->getCostmap()->mapToWorld(goal_xi, goal_yi, goal_x, goal_y);
 
         double goal_angle = atan2(goal_y - start_y, goal_x - start_x);
-        current_angle = goal_angle;
+        geometry_msgs::PoseStamped current_pose;
+        getRobotPose(current_pose, controller_costmap_ros_);
+        if (goal_angle != current_angle or distance(current_pose, planner_goal_) < 0.2) {
 
-        // First get the angle to an odom frame quat
-        tf2::Quaternion q;
-        q.setRPY(0, 0, goal_angle);
-        geometry_msgs::Quaternion goal_angle_in_base_link = tf2::toMsg(q);
+          current_angle = goal_angle;
 
-        // Now find a point in the direction of the quat.
-        // Start with the straight ahead in base_link
-        geometry_msgs::PoseStamped goal_pose;
-        goal_pose.header.frame_id = global_frame_;
-        goal_pose.pose.position.x = goal_x;
-        goal_pose.pose.position.y = goal_y;
-        goal_pose.pose.orientation = goal_angle_in_base_link;
+          // First get the angle to an odom frame quat
+          tf2::Quaternion q;
+          q.setRPY(0, 0, goal_angle);
+          geometry_msgs::Quaternion goal_angle_in_base_link = tf2::toMsg(q);
 
-        current_goal_pub_.publish(goal_pose);
+          // Now find a point in the direction of the quat.
+          // Start with the straight ahead in base_link
+          geometry_msgs::PoseStamped goal_pose;
+          goal_pose.header.frame_id = global_frame_;
+          goal_pose.pose.position.x = goal_x;
+          goal_pose.pose.position.y = goal_y;
+          goal_pose.pose.orientation = goal_angle_in_base_link;
 
+          current_goal_pub_.publish(goal_pose);
 
-        for (int i = 0; i < 100; i++) {
-          geometry_msgs::PoseStamped step;
-          step.header.frame_id = global_frame_;
-          double p = i * 0.01;
-          step.pose.position.x = (1 - p) * start_x + p * goal_pose.pose.position.x;
-          step.pose.position.y = (1 - p) * start_y + p * goal_pose.pose.position.y;
-          step.pose.orientation = goal_pose.pose.orientation;
-          planner_plan_->push_back(step);
+          for (int i = 0; i < 100; i++) {
+            geometry_msgs::PoseStamped step;
+            step.header.frame_id = global_frame_;
+            double p = i * 0.01;
+            step.pose.position.x =
+                (1 - p) * start_x + p * goal_pose.pose.position.x;
+            step.pose.position.y =
+                (1 - p) * start_y + p * goal_pose.pose.position.y;
+            step.pose.orientation = goal_pose.pose.orientation;
+            planner_plan_->push_back(step);
+          }
+
+          std::vector<geometry_msgs::PoseStamped> *temp_plan = planner_plan_;
+          lock.lock();
+          planner_plan_ = latest_plan_;
+          latest_plan_ = temp_plan;
+          last_valid_plan_ = ros::Time::now();
+          planning_retries_ = 0;
+          planner_goal_ = goal_pose;
+          new_global_plan_ = true;
+
+          lock.unlock();
         }
+        ROS_ERROR("Generated a plan from the base_global_planner");
 
-        std::vector<geometry_msgs::PoseStamped>* temp_plan = planner_plan_;
-        lock.lock();
-        planner_plan_ = latest_plan_;
-        latest_plan_ = temp_plan;
-        last_valid_plan_ = ros::Time::now();
-        planning_retries_ = 0;
-        new_global_plan_ = true;
-
-        ROS_DEBUG_NAMED("move_base_plan_thread","Generated a plan from the base_global_planner");
-
-        //make sure we only start the controller if we still haven't reached the goal
-        if(runPlanner_)
-          state_ = CONTROLLING;
-        if(planner_frequency_ <= 0)
-          runPlanner_ = false;
-        lock.unlock();
       }
-
+      // Even if the plan doesn't change, we need to break out of the
+      // planning state to hit the next recovery behaviors
+      if (runPlanner_)
+        state_ = CONTROLLING;
+      if (planner_frequency_ <= 0)
+        runPlanner_ = false;
+      planner_rate.sleep();
 
       lock.lock();
     }
@@ -526,9 +534,9 @@ inline double abs_angle_diff(const double x, const double y)
         return -1;
       } else
       {
-        ROS_ERROR("Plan set, planner off");
-        // NOTE: Doesn't do anything for now
-        runPlanner_ = false;
+        ROS_ERROR("Plan set, planner still going");
+        // HAX: leave the planner running, see if we replan around obstacle areas fast enough
+        //runPlanner_ = false;
       }
     }
 
@@ -537,6 +545,7 @@ inline double abs_angle_diff(const double x, const double y)
       recovery_index_ = 0;
 
 
+    ROS_ERROR_STREAM("Cycling " << state_);
     //the move_base state machine, handles the control logic for navigation
     switch(state_){
       //if we are in a planning state, then we'll attempt to make a plan
@@ -549,7 +558,7 @@ inline double abs_angle_diff(const double x, const double y)
           }
           planner_cond_.notify_one();
         }
-        ROS_DEBUG_NAMED("move_base","Waiting for plan, in the planning state.");
+        ROS_DEBUG("Waiting for plan, in the planning state.");
         break;
 
       //if we're controlling, we'll attempt to find valid velocity commands
@@ -639,9 +648,9 @@ inline double abs_angle_diff(const double x, const double y)
             // prevent blind arc motions into actual obstacles
             auto rate = ros::Rate(10);
             int i = 0;
-            while (i < 120) {
+            while (i < 80) {
               cmd_vel.linear.x = 0;
-              cmd_vel.angular.z = .2;
+              cmd_vel.angular.z = .4;
               vel_pub_.publish(cmd_vel);
               rate.sleep();
               i++;
