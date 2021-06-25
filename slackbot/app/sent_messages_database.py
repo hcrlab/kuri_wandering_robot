@@ -1,11 +1,8 @@
 import logging
 import pickle
 import random
+import string
 import time
-
-# def get_random_alphanumeric_string(stringLen=10):
-#     lettersAndDigits = string.ascii_letters + string.digits
-#     return ''.join((random.choice(lettersAndDigits) for i in range(stringLen)))
 
 class SentMessagesDatabase(object):
     """
@@ -24,6 +21,54 @@ class SentMessagesDatabase(object):
         self.user_id_ts_to_image_id = {}
         self.user_id_ts_to_reactions = {}
         self.user_id_to_next_image_send_time = {}
+
+        # Track Scheduled Messages
+        self.user_id_to_scheduled_message_ts = {}
+
+        # Random IDs (Survey Messages)
+        self.random_ids = set()
+        self.user_id_to_random_ids = {}
+        self.user_id_to_survey_urls = {}
+        self.survey_url_to_user_id_ts = {}
+        self.user_id_ts_to_survey_url = {}
+
+        # Intro Messages
+        self.intro_message_user_id_ts = set()
+        self.pre_study_message_user_id_ts = set()
+
+    def get_random_id(self, n_digits=10):
+        random_id = None
+        while random_id is None or random_id in self.random_ids:
+            random_id = random.randint(10**(n_digits-1),10**(n_digits)-1)
+        self.random_ids.add(random_id)
+        return random_id
+
+    def add_random_id(self, user_id, random_id, survey_url):
+        if user_id not in self.user_id_to_random_ids:
+            self.user_id_to_random_ids[user_id] = []
+            self.user_id_to_survey_urls[user_id] = []
+        self.user_id_to_random_ids[user_id].append(random_id)
+        self.user_id_to_survey_urls[user_id].append(survey_url)
+
+    def add_intro_message(self, user_id, ts):
+        self.intro_message_user_id_ts.add((user_id, ts))
+
+    def add_pre_study_message(self, user_id, ts):
+        self.pre_study_message_user_id_ts.add((user_id, ts))
+
+    def add_sent_survey(self, user_id, ts, survey_url):
+        self.survey_url_to_user_id_ts[survey_url] = (user_id, ts)
+        self.user_id_ts_to_survey_url[(user_id, ts)] = survey_url
+
+    def was_scheduled_message_sent(self, user_id, scheduled_ts):
+        if user_id not in self.user_id_to_scheduled_message_ts or scheduled_ts not in self.user_id_to_scheduled_message_ts[user_id]:
+            return False
+        return True
+
+    def scheduled_message_was_sent(self, user_id, scheduled_ts):
+        if user_id not in self.user_id_to_scheduled_message_ts:
+            self.user_id_to_scheduled_message_ts[user_id] = set()
+        self.user_id_to_scheduled_message_ts[user_id].add(scheduled_ts)
 
     def get_image_url(self, image_id):
         """
@@ -56,9 +101,6 @@ class SentMessagesDatabase(object):
         self.user_id_ts_to_image_id[(user_id, ts)] = image_id
         self.user_id_ts_to_reactions[(user_id, ts)] = [0, 0]
 
-        # Reset the user's time to send
-        self.user_id_to_next_image_send_time.pop(user_id, None)
-
     def add_reaction(self, user_id, ts, reaction):
         """
         Adds a reaction from a user to a message sent at a particular timestamp
@@ -88,11 +130,16 @@ class SentMessagesDatabase(object):
                             image_id_to_user_id_reaction[image_id].append((user_id, 1 if pos_reactions >= neg_reactions else 0))
         return image_id_to_user_id_reaction
 
-    def add_user_send_image_time(self, user_id, image_send_time):
+    def add_user_send_image_time(self, user_id, image_send_time=None):
         """
         Adds the next time user_id should get image sent to them to the database.
         """
-        self.user_id_to_next_image_send_time[user_id] = image_send_time
+        if image_send_time is None:
+            # Reset the user's time to send
+            self.user_id_to_next_image_send_time.pop(user_id, None)
+        else:
+            # Set the image_send_time
+            self.user_id_to_next_image_send_time[user_id] = image_send_time
 
     def get_user_time_to_send(self):
         """

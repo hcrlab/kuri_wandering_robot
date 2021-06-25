@@ -57,10 +57,13 @@ class FlaskSlackbot(object):
         self.slack_app.action("action_id_x")(self.action_button_x)
         self.slack_app.action("confirm_input")(self.confirm_input)
         self.slack_app.command("/test_get_images_2")(self.test_get_images)
-
-        # Store the Slack users
-        self.users = slackbot_conf['users_list']
-        self.users_to_condition = slackbot_conf['users_to_condition']
+        self.slack_app.command("/test_end_of_day_message_0")(self.test_end_of_day_message_0)
+        self.slack_app.command("/test_end_of_day_message_1")(self.test_end_of_day_message_1)
+        self.slack_app.command("/test_end_of_day_message_2")(self.test_end_of_day_message_2)
+        self.slack_app.command("/send_daily_intro_message_0")(self.send_daily_intro_message_0)
+        self.slack_app.command("/send_daily_intro_message_1")(self.send_daily_intro_message_1)
+        self.slack_app.command("/send_daily_intro_message_2")(self.send_daily_intro_message_2)
+        self.slack_app.command("/test_pre_study_message")(self.test_pre_study_message)
 
         # Configure data storage
         self.data_base_dir = data_base_dir
@@ -71,7 +74,7 @@ class FlaskSlackbot(object):
         self.sent_images_csv = ("sent_images.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp"])
         self.reactions_csv = ("reactions.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Reaction"])
         self.followups_csv = ("followups.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Question", "Response"])
-        self.survey_csv = ("survey.csv", ["Time", "Survey Random ID", "Slackbot User ID", "Message Timestamp"])
+        self.survey_csv = ("survey.csv", ["Time", "Survey Random ID", "Survey URL", "Day", "Slackbot User ID", "Message Timestamp"])
         for csv_filename, csv_header in [self.received_images_csv, self.sent_images_csv, self.reactions_csv, self.followups_csv, self.survey_csv]:
             csv_filepath = os.path.join(self.data_base_dir, csv_filename)
             if not os.path.exists(csv_filepath):
@@ -88,6 +91,70 @@ class FlaskSlackbot(object):
             sent_messages_database_filepath)
         self.database_save_interval = database_save_interval
         self.database_updates_since_last_save = 0
+
+        # Store the Slack users
+        self.users = slackbot_conf['users_list']
+        self.users_to_configuration = {}
+        for user in self.users:
+            if user not in slackbot_conf:
+                logging.warn("Error, user %s should have a configuration but does not. Skipping user." % user)
+                continue
+            self.users_to_configuration[user] = slackbot_conf[user]
+        self.user_id_to_next_image_day = {}
+        self.user_id_to_next_image_i = {}
+        self.send_scheduled_messages()
+
+    def send_scheduled_messages(self):
+        for user_id in self.users_to_configuration:
+            # Send all the scheduled messages
+            if 'pre_study_message_timestamp' in self.users_to_configuration[user_id]:
+                pre_study_message_timestamp = self.users_to_configuration[user_id]['pre_study_message_timestamp']
+                if not self.sent_messages_database.was_scheduled_message_sent(user_id, pre_study_message_timestamp):
+                    sent = self.send_pre_study_message(user_id, pre_study_message_timestamp)
+                    if sent:
+                        self.sent_messages_database.scheduled_message_was_sent(user_id, pre_study_message_timestamp)
+                        self.database_updated()
+
+            if 'daily_schedule' in self.users_to_configuration[user_id]:
+                for day in range(len(self.users_to_configuration[user_id]['daily_schedule'])):
+                    daily_schedule = self.users_to_configuration[user_id]['daily_schedule'][day]
+
+                    intro_message_timestamp = daily_schedule['intro_message_timestamp']
+                    if not self.sent_messages_database.was_scheduled_message_sent(user_id, intro_message_timestamp):
+                        sent = self.send_daily_intro_message(user_id, day, intro_message_timestamp)
+                        if sent:
+                            self.sent_messages_database.scheduled_message_was_sent(user_id, intro_message_timestamp)
+                            self.database_updated()
+
+                    survey_timestamp = daily_schedule['survey_timestamp']
+                    if not self.sent_messages_database.was_scheduled_message_sent(user_id, survey_timestamp):
+                        sent = self.send_end_of_day_message(user_id, day, survey_timestamp)
+                        if sent:
+                            self.sent_messages_database.scheduled_message_was_sent(user_id, survey_timestamp)
+                            self.database_updated()
+
+            # Initialize the image send times to the first image send timestamp in the
+            # future. Assumes timestamps across days and images are monotonically increasing
+            if 'daily_schedule' in self.users_to_configuration[user_id]:
+                for day in range(len(self.users_to_configuration[user_id]['daily_schedule'])):
+                    daily_schedule = self.users_to_configuration[user_id]['daily_schedule'][day]
+                    for image_i in range(len(daily_schedule['images_sent_timestamps'])):
+                        next_image_timestamp = daily_schedule['images_sent_timestamps'][image_i]
+                        if time.time() < next_image_timestamp:
+                            self.user_id_to_next_image_day[user_id] = day
+                            self.user_id_to_next_image_i[user_id] = image_i
+                            self.sent_messages_database.add_user_send_image_time(user_id, next_image_timestamp)
+                            self.database_updated()
+                            break
+                    if user_id in self.user_id_to_next_image_day:
+                        break
+                # If all image send times are in the past
+                if user_id not in self.user_id_to_next_image_day:
+                    self.user_id_to_next_image_day[user_id] = None
+                    self.user_id_to_next_image_i[user_id] = None
+                    self.sent_messages_database.add_user_send_image_time(user_id, None)
+                    self.database_updated()
+
 
     def database_updated(self, num_updates=1):
         """
@@ -115,7 +182,6 @@ class FlaskSlackbot(object):
         for i in range(len(image_ids)):
             image_bytes = images_bytes[i]
             image_id = image_ids[i]
-            # print("image_bytes", image_bytes, "i", i)
 
             # Get the image_url, generating a new one if we have not already
             # uploaded this image.
@@ -201,6 +267,23 @@ class FlaskSlackbot(object):
                 csv_writer.writerow([time.time(), image_url, user_id, ts])
             n_successes += 1
 
+        # Update the next time to send
+        if user_id in self.user_id_to_next_image_day:
+            while self.user_id_to_next_image_day[user_id] is not None and time.time() > self.users_to_configuration[user_id]['daily_schedule'][self.user_id_to_next_image_day[user_id]]['images_sent_timestamps'][self.user_id_to_next_image_i[user_id]]:
+                self.user_id_to_next_image_i[user_id] += 1
+                if self.user_id_to_next_image_i[user_id] >= len(self.users_to_configuration[user_id]['daily_schedule'][self.user_id_to_next_image_day[user_id]]['images_sent_timestamps']):
+                    self.user_id_to_next_image_i[user_id] = 0
+                    self.user_id_to_next_image_day[user_id] += 1
+                    if self.user_id_to_next_image_day[user_id] >= len(self.users_to_configuration[user_id]['daily_schedule']):
+                        self.user_id_to_next_image_day[user_id] = None
+                        self.user_id_to_next_image_i[user_id] = None
+            if self.user_id_to_next_image_day[user_id] is None:
+                next_image_timestamp = None
+            else:
+                next_image_timestamp = self.users_to_configuration[user_id]['daily_schedule'][self.user_id_to_next_image_day[user_id]]['images_sent_timestamps'][self.user_id_to_next_image_i[user_id]]
+            self.sent_messages_database.add_user_send_image_time(user_id, next_image_timestamp)
+            self.database_updated()
+
         return n_successes
 
     def save_images(self, images_bytes, image_ids):
@@ -234,7 +317,6 @@ class FlaskSlackbot(object):
 
         # Decode the request
         images_bytes = []
-        # print("request.json['images']", request.json['images'], len(request.json['images']))
         for i in range(len(request.json['images'])):
             image = request.json['images'][i]
             image_bytes = base64.decodebytes(image.encode('ascii')) # image.encode("utf-8") #
@@ -248,7 +330,7 @@ class FlaskSlackbot(object):
         # Get a URL to the image, and remove failed URLs
         image_ids_to_return = []
         image_urls = self.get_image_urls(images_bytes, image_ids)
-        print("image_ids", image_ids, "image_urls", image_urls)
+        logging.info("image_ids %s image_urls %s" % (image_ids, image_urls))
 
         # Save it in the CSV
         csv_filepath = os.path.join(self.data_base_dir, self.received_images_csv[0])
@@ -301,7 +383,7 @@ class FlaskSlackbot(object):
         user_to_learning_condition = {}
         for i in range(len(self.users)):
             user_id = self.users[i]
-            _, learning_condition = self.users_to_condition[user_id]
+            learning_condition = self.users_to_configuration[user_id]['learning_condition']
             user_to_learning_condition[i] = learning_condition
         response = self.flask_app.response_class(
             response=json.dumps({
@@ -409,7 +491,7 @@ class FlaskSlackbot(object):
         image_url = self.body_to_image_url(body)
 
         # Send the followup question
-        response = slack_templates.action_button_check_mark_or_x(body, user_id, self.users_to_condition[user_id][0], reaction)
+        response = slack_templates.action_button_check_mark_or_x(body, user_id, self.users_to_configuration[user_id]['expression_of_curiosity_condition'], reaction)
         respond(response)
         # response = self.slack_app.client.chat_update(channel=body["container"]["channel_id"], ts=ts, **response)
         # if not response["ok"]:
@@ -428,7 +510,7 @@ class FlaskSlackbot(object):
             self.sent_messages_database.add_reaction(user_id, ts, reaction)
             self.database_updated()
         else:
-            print("Got button click reaction from user_id %s not in self.users, ignoring" % user_id)
+            logging.info("Got button click reaction from user_id %s not in self.users, ignoring" % user_id)
 
     def body_to_question_answer(self, body):
         """
@@ -491,18 +573,190 @@ class FlaskSlackbot(object):
         """
         # Acknowledge the command
         ack()
-        print("test_get_images", ack, say, command, event, respond)
+        logging.info("test_get_images")
         # Store that the user requested images.
         user_id = command["user_id"]
         if user_id in self.users:
             self.sent_messages_database.add_user_send_image_time(user_id, time.time())
             self.database_updated()
         else:
-            print("Got /test_get_images from user_id %s not in self.users, ignoring" % user_id)
+            logging.info("Got /test_get_images from user_id %s not in self.users, ignoring" % user_id)
+
+    def test_end_of_day_message_0(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /test_end_of_day_message_0 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("test_end_of_day_message_0")
+        day = 0
+        user_id = command["user_id"]
+        self.send_end_of_day_message(user_id, day)
+
+    def test_end_of_day_message_1(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /test_end_of_day_message_1 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("test_end_of_day_message_1")
+        day = 1
+        user_id = command["user_id"]
+        self.send_end_of_day_message(user_id, day)
+
+    def test_end_of_day_message_2(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /test_end_of_day_message_2 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("test_end_of_day_message_2")
+        day = 2
+        user_id = command["user_id"]
+        self.send_end_of_day_message(user_id, day)
+
+    def send_end_of_day_message(self, user_id, day, timestamp=None):
+        # Assign a unique random ID
+        sent = False
+        if user_id in self.users:
+            random_id = self.sent_messages_database.get_random_id()
+            payload, survey_url = slack_templates.survey_template(user_id, random_id, day)
+
+            self.sent_messages_database.add_random_id(user_id, random_id, survey_url)
+            self.database_updated()
+
+            # Send the message
+            if timestamp is None or timestamp <= time.time() + 10:
+                response = self.slack_app.client.chat_postMessage(**payload)
+                if not response["ok"]:
+                    logging.info("Error sending survey message to user %s: %s, timestamp %s time.time() %s" % (user_id, response, timestamp, time.time()))
+                    return sent
+                ts = response["message"]["ts"]
+                self.sent_messages_database.add_sent_survey(user_id, ts, survey_url)
+                self.database_updated()
+                sent = True
+            else:
+                response = self.slack_app.client.chat_scheduleMessage(post_at=timestamp, **payload)
+                if not response["ok"]:
+                    logging.info("Error schedule-sending daily intro message to user %s: %s" % (user_id, response))
+                    return sent
+                ts = timestamp
+                sent = True
+
+            # Save it in the CSV
+            csv_filepath = os.path.join(self.data_base_dir, self.survey_csv[0])
+            with open(csv_filepath, "a") as f:
+                csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                csv_writer.writerow([time.time(), random_id, survey_url, day, user_id, ts])
+        else:
+            logging.info("Got /test_end_of_day_message from user_id %s not in self.users, ignoring" % user_id)
+        return sent
+
+    def send_daily_intro_message_0(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /send_daily_intro_message_0 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("send_daily_intro_message_0")
+        day = 0
+        user_id = command["user_id"]
+        self.send_daily_intro_message(user_id, day)
+
+    def send_daily_intro_message_1(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /send_daily_intro_message_1 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("send_daily_intro_message_1")
+        day = 1
+        user_id = command["user_id"]
+        self.send_daily_intro_message(user_id, day)
+
+    def send_daily_intro_message_2(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /send_daily_intro_message_2 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("send_daily_intro_message_2")
+        day = 2
+        user_id = command["user_id"]
+        self.send_daily_intro_message(user_id, day)
+
+    def send_daily_intro_message(self, user_id, day, timestamp=None):
+        if user_id in self.users:
+            payload = slack_templates.intro_template(user_id, day)
+
+            # Send the message
+            if timestamp is None or timestamp <= time.time() + 10:
+                response = self.slack_app.client.chat_postMessage(**payload)
+                if not response["ok"]:
+                    logging.info("Error sending daily intro message to user %s: %s, timestamp %s time.time() %s" % (user_id, response, timestamp, time.time()))
+                    return False
+                ts = response["message"]["ts"]
+                self.sent_messages_database.add_intro_message(user_id, ts)
+                self.database_updated()
+                return True
+            else:
+                response = self.slack_app.client.chat_scheduleMessage(post_at=timestamp, **payload)
+                if not response["ok"]:
+                    logging.info("Error schedule-sending daily intro message to user %s: %s" % (user_id, response))
+                    return False
+                return True
+        else:
+            logging.info("Got /send_daily_intro_message from user_id %s not in self.users, ignoring" % user_id)
+        return False
+
+    def send_pre_study_message(self, user_id, timestamp=None):
+        """
+        if timestamp is None, send immediately. Else, schedule.
+        """
+        if user_id in self.users:
+            payload = slack_templates.pre_study_template(user_id)
+
+            # Send the message
+            if timestamp is None or timestamp <= time.time() + 10:
+                response = self.slack_app.client.chat_postMessage(**payload)
+                if not response["ok"]:
+                    logging.info("Error sending pre-study message to user %s: %s, timestamp %s time.time() %s" % (user_id, response, timestamp, time.time()))
+                    return False
+                ts = response["message"]["ts"]
+                self.sent_messages_database.add_pre_study_message(user_id, ts)
+                self.database_updated()
+                return True
+            else:
+                response = self.slack_app.client.chat_scheduleMessage(post_at=timestamp, **payload)
+                if not response["ok"]:
+                    logging.info("Error schedule-sending pre-study message to user %s: %s" % (user_id, response))
+                    return False
+                return True
+        else:
+            logging.info("Got send_pre_study_message from user_id %s not in self.users, ignoring" % user_id)
+        return False
+
+    def test_pre_study_message(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /test_pre_study_message into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("test_pre_study_message")
+
+        user_id = command["user_id"]
+        self.send_pre_study_message(user_id)
 
     def start(self):
         """
-        Start the FlastSlackbot
+        Start the FlaskSlackbot
         """
         # Launch the Flask app in another thread
         self.flask_thread = threading.Thread(

@@ -13,26 +13,26 @@ import time
 
 def load_images(folder_path):
     """
-    Loads all the jpg images in folder_path as cv2 images
+    Get the filenames of all images in the folder
     """
     retval = {}
     for filename in os.listdir(folder_path):
         img_id, ext = os.path.splitext(filename)
         if ext.lower() in [".jpg", ".jpeg"]:#, ".png"]:
-            retval[img_id] = cv2.imread(os.path.join(folder_path, filename))
+            retval[img_id] = os.path.join(folder_path, filename) # cv2.imread(os.path.join(folder_path, filename)) #
     return retval
 
 if __name__ == "__main__":
     # NEED TO CHANGE
-    folder_path = "/Users/amaln/Documents/HCRLab/kuri_photography_cmm_demo/20210419_Kuri_Moving_Around_UW_CSE2/subsampling_policy_1/"
-    server_url = "http://ec2-34-222-57-139.us-west-2.compute.amazonaws.com:8194"
+    folder_path = "/home/ubuntu/stored_images/" # "/Users/amaln/Documents/HCRLab/kuri_photography_cmm_demo/20210419_Kuri_Moving_Around_UW_CSE2/original_subsampling_policy_1/" #
+    server_url = "http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194"
 
     n_images = 5 # Num images to send
 
     # Load the images
     print("Loading images")
-    images = load_images(folder_path)
-    print("Loaded %d Images" % len(images))
+    image_filenames = load_images(folder_path)
+    print("Loaded %d Image Filepaths" % len(image_filenames))
 
     # Get the number of users
     res = requests.get(server_url+'/get_num_users')
@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     # Run the loop
     target_loop_duration = 10.0 # secs
-    user_to_stored_images = {i : list(images.keys()) for i in range(n_users)}
+    user_to_stored_images = {i : list(image_filenames.keys()) for i in range(n_users)}
     user_to_sent_images = {i : list() for i in range(n_users)}
     image_id_to_slackbot_image_id = {}
     while True:
@@ -69,7 +69,8 @@ if __name__ == "__main__":
                     i = random.randint(0, len(user_to_stored_images[user])-1)
                     image_id = user_to_stored_images[user].pop(i)
                     image_ids_to_send.append(image_id)
-                    images_to_send.append(base64.encodebytes(bytearray(np.array(cv2.imencode('.jpg', images[image_id])[1]).tostring())).decode('ascii'))
+                    image = cv2.imread(image_filenames[image_id])
+                    images_to_send.append(base64.encodebytes(bytearray(np.array(cv2.imencode('.jpg', image)[1]).tostring())).decode('ascii'))
                     user_to_sent_images[user].append(image_id)
                 dict_to_send = {'images':images_to_send, 'user':user}
                 res = requests.post(server_url+'/send_images', json=dict_to_send)
