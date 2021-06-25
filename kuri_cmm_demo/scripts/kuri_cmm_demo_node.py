@@ -465,7 +465,7 @@ if __name__ == "__main__":
 
     img_topic = rospy.get_param('~img_topic', '/upward_looking_camera/compressed')
     object_detection_srv = rospy.get_param('~object_detection_srv', 'object_detection')
-    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-34-222-57-139.us-west-2.compute.amazonaws.com:8194')
+    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194')
     send_messages_database_filepath = rospy.get_param('~send_messages_database_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl")
     head_state_topic = rospy.get_param('~head_state_topic', '/head_controller/state')
 
