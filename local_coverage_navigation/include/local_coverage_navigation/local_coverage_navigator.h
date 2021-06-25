@@ -143,11 +143,6 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
 
       geometry_msgs::PoseStamped goalToGlobalFrame(const geometry_msgs::PoseStamped& goal_pose_msg);
 
-      /**
-       * @brief This is used to wake the planner at periodic intervals.
-       */
-      void wakePlanner(const ros::TimerEvent& event);
-
       tf2_ros::Buffer& tf_;
 
 
@@ -165,7 +160,6 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       uint32_t planning_retries_;
       double conservative_reset_dist_, clearing_radius_;
       ros::Publisher current_goal_pub_, vel_pub_, action_goal_pub_, recovery_status_pub_;
-      ros::Subscriber goal_sub_;
       ros::ServiceServer make_plan_srv_, clear_costmaps_srv_;
       bool shutdown_costmaps_, clearing_rotation_allowed_, recovery_behavior_enabled_;
       bool make_plan_clear_costmap_, make_plan_add_unreachable_goal_;

@@ -64,8 +64,6 @@ namespace local_coverage_navigation {
     ros::NodeHandle private_nh("~");
     ros::NodeHandle nh;
 
-
-
     recovery_trigger_ = PLANNING_R;
 
     //get some parameters that will be global to the move base node
@@ -248,13 +246,6 @@ namespace local_coverage_navigation {
     }
 
     return true;
-  }
-
-
-  void LocalCoverageNavigator::wakePlanner(const ros::TimerEvent& event)
-  {
-    // we have slept long enough for rate
-    planner_cond_.notify_one();
   }
 
   void LocalCoverageNavigator::testThread(){
@@ -717,12 +708,6 @@ inline double abs_angle_diff(const double x, const double y)
           recovery_index_++;
         }
         else{
-          // HAX: Manual recovery
-          static std::default_random_engine e;
-          static std::uniform_real_distribution<double> dis(0, 6.28);
-          //current_angle = dis(e);
-          ROS_ERROR_STREAM(current_angle);
-          ROS_ERROR("SET ANGLE");
           ROS_DEBUG_NAMED("move_base_recovery","All recovery behaviors have failed, locking the planner and disabling it.");
           //disable the planner thread
           boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
