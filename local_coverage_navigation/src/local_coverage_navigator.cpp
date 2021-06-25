@@ -216,7 +216,7 @@ namespace local_coverage_navigation {
   bool LocalCoverageNavigator::isQuaternionValid(const geometry_msgs::Quaternion& q){
     //first we need to check if the quaternion has nan's or infs
     if(!std::isfinite(q.x) || !std::isfinite(q.y) || !std::isfinite(q.z) || !std::isfinite(q.w)){
-      ROS_ERROR("Quaternion has nans or infs... discarding as a navigation goal");
+      ROS_ERROR("Quaternion has nans or infs...");
       return false;
     }
 
@@ -387,7 +387,7 @@ inline double abs_angle_diff(const double x, const double y)
     }
   }
 
-  int LocalCoverageNavigator::executeCb(const local_coverage_navigation::NavigateGoalConstPtr& move_base_goal)
+  int LocalCoverageNavigator::executeCb(const local_coverage_navigation::NavigateGoalConstPtr& goal)
   {
     ROS_ERROR("LOOP START");
 
@@ -425,14 +425,17 @@ inline double abs_angle_diff(const double x, const double y)
       //the real work on pursuing a goal is done here
       int status = executeCycle();
 
-      //if we're done, then we'll return from execute
-      if (status == 1) {
-        as_->setSucceeded(as_result);
+      // Effort -1 is "don't stop unless preempted"
+      if (goal->effort != -1) {
+        // if we're done, then we'll return from execute
+        if (status == 1) {
+          as_->setSucceeded(as_result);
 
-        return 0;
-      } else if (status == -1) {
-        as_->setAborted(as_result);
-        return -1;
+          return 0;
+        } else if (status == -1) {
+          as_->setAborted(as_result);
+          return -1;
+        }
       }
 
 
