@@ -2,11 +2,13 @@
 # ROS Libraries
 import actionlib
 from actionlib_msgs.msg import GoalStatus
+from control_msgs.msg import JointTrajectoryControllerState, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from cv_bridge import CvBridge
 from kuri_cmm_demo.srv import ObjectDetection, ObjectDetectionResponse
 from local_coverage_navigation.msg import NavigateAction, NavigateGoal
 import rospy
 from sensor_msgs.msg import CompressedImage, Image
+from trajectory_msgs.msg import JointTrajectoryPoint
 # Python Default Libraries
 import base64
 import cv2
@@ -101,6 +103,11 @@ class CMMDemo(object):
 
         # Parameters relevant to local navigation
         self.local_coverage_navigator_action = actionlib.SimpleActionClient('/local_coverage_navigator/navigate', NavigateAction)
+
+        # Parameters relevant to opening eyes
+        self.eyelid_controller_action = actionlib.SimpleActionClient('/eyelids_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.eye_closed_position = 0.41
+        self.eye_open_position = 0.0
 
         # Parameters relevant to object detection
         self.object_detection_srv_name = object_detection_srv
@@ -352,6 +359,50 @@ class CMMDemo(object):
                 rospy.loginfo("State: NORMAL ==> INITIALIZE_TUNER")
 
 
+    def open_eyes(self, duration_secs=0.2):
+        """
+        Open the robot's eyes
+        """
+        duration = rospy.Duration.from_sec(duration_secs)
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.header.stamp = rospy.Time.now()
+        goal.trajectory.joint_names = ["eyelids_joint"]
+        point = JointTrajectoryPoint()
+        point.positions = [self.eye_open_position]
+        point.velocities = []
+        point.accelerations = []
+        point.effort = []
+        point.time_from_start = duration
+        goal.trajectory.points = [point]
+        # rospy.loginfo("move_head goal %s" % goal)
+
+        # Send the goal
+        self.eyelid_controller_action.wait_for_server()
+        self.eyelid_controller_action.send_goal(goal)
+        self.eyelid_controller_action.wait_for_result(duration)
+
+    def close_eyes(self, duration_secs=0.2):
+        """
+        Open the robot's eyes
+        """
+        duration = rospy.Duration.from_sec(duration_secs)
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.header.stamp = rospy.Time.now()
+        goal.trajectory.joint_names = ["eyelids_joint"]
+        point = JointTrajectoryPoint()
+        point.positions = [self.eye_closed_position]
+        point.velocities = []
+        point.accelerations = []
+        point.effort = []
+        point.time_from_start = duration
+        goal.trajectory.points = [point]
+        # rospy.loginfo("move_head goal %s" % goal)
+
+        # Send the goal
+        self.eyelid_controller_action.wait_for_server()
+        self.eyelid_controller_action.send_goal(goal)
+        self.eyelid_controller_action.wait_for_result(duration)
+
     def img_callback(self, img_msg):
         """
         If this image gets subsampled, run self.subsampled_image(img_msg) (in a
@@ -372,6 +423,8 @@ class CMMDemo(object):
                     self.local_coverage_navigator_action.wait_for_server()
                     rospy.loginfo("Sending goal to local_coverage_navigator_action")
                     self.local_coverage_navigator_action.send_goal(NavigateGoal())
+                    self.view_tuner.move_head() # Center the view_tuner head
+                    self.open_eyes()
                 if self.subsampling_policy.subsample(img_msg): # This image was selected
                     thread = threading.Thread(
                         target=self.subsampled_image,
@@ -465,7 +518,7 @@ if __name__ == "__main__":
 
     img_topic = rospy.get_param('~img_topic', '/upward_looking_camera/compressed')
     object_detection_srv = rospy.get_param('~object_detection_srv', 'object_detection')
-    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194')
+    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:3001')
     send_messages_database_filepath = rospy.get_param('~send_messages_database_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl")
     head_state_topic = rospy.get_param('~head_state_topic', '/head_controller/state')
 
