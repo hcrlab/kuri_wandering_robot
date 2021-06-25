@@ -2,65 +2,10 @@ import copy
 import pprint
 import random
 
-def slack_template_1(user_id, direct_link, image_description=None):
-    if image_description is None:
-        image_description = "Kuri shared this picture with you!"
-    payload = {
-        "ts": "",
-        "channel": user_id,
-        "username": "kuribot",
-        "icon_emoji": ":robot_face:",
-        "text": "Hi, it's Kuribot! I took an image I think you might like. Let me know what you think by clicking the buttons!",
-        "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Hi :wave:, it's Kuribot :robot_face:, with the \"Seeing Through the Eyes of a Robot\" project :eyes:. I took an image :camera_with_flash: I think you might like."
-            }
-        },
-        {
-            "type": "image",
-            "image_url": direct_link,
-            "alt_text": image_description
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Could you please tell me whether you like it by clicking :white_check_mark: or :x: below?"
-            }
-        },
-        {
-            "type": "actions",
-            "elements": [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": ":white_check_mark:",
-                        "emoji": True
-                    },
-                    "value": "check_mark",
-                    "action_id": "action_id_check_mark"
-                },
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": ":x:",
-                        "emoji": True
-                    },
-                    "value": "x_mark",
-                    "action_id": "action_id_x"
-                }
-            ]
-        }
-    ],
-    }
-    return payload
 """
 Types of messages to expect:
+    At the beginning of the study:
+        X Pre-study message introducing the task
     At the beginning of the day:
         X Intro message -- sent at 9AM daily
         X    Has a different “fun thing” every day
@@ -79,115 +24,85 @@ Types of messages to expect:
     Final message for final survey
         Assuming that final survey is different from end of day survey
 """
-def pre_Kuri_template(user_id, user_name):
+def pre_study_template(user_id):
     payload = {
         "ts": "",
         "channel": user_id,
         "username": "kuribot",
         "text": "Hi, it's Kuribot! I'm checking in before the study starts with some important information",
         "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "First off, I want to confrim that I have the right account. Are you "+ user_name+ " who signed up for a study?"
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "If so, then I've got the right person! If not, please contact the researchers who run this study at cmavro@cs.washington.edu"
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text":  "Just as a reminder, I'm going to be sending you pictures of objects that I think you will like in the Gates Center. I'm looking forward to sending you some pictures starting tomorrow!"
-            }
-        }
-    ],
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "Hi, it's KuriBot! I'm getting in touch with you to ensure everything is in-place for the study to start tomorrow."
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "First off, I want to confirm that I have the right account. Did you sign up to participate in the \"Seeing the World Through the Eyes of a Robot\" study?"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "If so, then I've got the right person! If not, please contact the researchers running this study at cmavro@cs.washington.edu"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "As a reminder, I will be moving around the Gates Center sending you pictures of objects that I think you will like. I'm looking forward to sending you some pictures starting tomorrow!"
+			}
+		},
+		{
+			"type": "section",
+			"text": {
+				"type": "mrkdwn",
+				"text": "Here is a welcome message from the researchers running this study: \n```\nWelcome to the \"Seeing the World Through the Eyes of a Robot\" study! I'm one of the researchers running the study. Now that you've heard from Kuri, I wanted to tell you more about the study you've signed up for.\n\n- You will be reciving images from Kuri as it wanders around the Gates Center. This will continue for three days, starting tomorrow.\n- Each day at 9 AM you will receive an intro message from Kuri, to let you know that it has started. You will then receive four sets of images: at 10AM, 12PM, 2PM, and 4PM. These images are of objects that Kuri thinks you might like.\n- Kuri will ask you for feedback on the images it takes, and it is your choice whether to respond to its requests for feedback. You can respond at anytime that is convenient for you, and it won't hurt Kuri's feelings if you don't respond. \n- At 4:45PM each study day, you willl receive a link to an end-of-day survey. To receive full compensation, you *must* complete all three end-of-day surveys.\n- If you have any questions, or you have recieved these messages without signing up for the study, please contact cmavro@cs.washington.edu. \n\nWe hope you enjoy interacting with Kuri!\n```"
+			}
+		}
+	]
     }
     return payload
 
-def pre_research_template(user_id, user_name):
-    payload = {
-        "ts": "",
-        "channel": user_id,
-        "username": "kuri_researcher",
-        "text": "Hi, it's a researcher from the Kuribot study. I'm checking in before the study starts with some important information",
-        "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Now that you've heard from Kuri, I just wanted to tell you more about the study you've signed up for."
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "You will be reciving images from Kuri as it wanders around the Gates Center. This will continue for three days."
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Each day at 9 AM you will receive an intro message from Kuri, to let you know that it has started. You will then receive four sets of images: at 10AM, 12PM, 2PM, and 4PM. These images are things that Kuri thinks you might like."
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Kuri will ask you for feedback, but you can decied whether or not to respond to Kuri's requests for feedback. Don't worry, it won't hurt Kuri's feelings if you don't respond. At 4:45PM each study day, you willl receive a link to a survey. To complete the study and recieve full compensation, you must fill out all three surveys"
-            }
-        },
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Ok, that's it. If you have any questions, or you have recieved these messages without signing up, please contact cmavro@cs.Washington.edu. We hope you enjoy interacting with Kuri!"
-            }
-        },
-    ]
-    }
-def intro_template(day, user_id):
+def intro_template(user_id, day):
     #The intro message accepts an int that describes what day the participant is on
     #Expected values: 0-2
     #User_id is also needed to post to the correct channel
+    if day < 0 or day > 3:
+        new_day = abs(day) % 3
+        print("intro_template got incorrect day %d, setting to %d" % (day, new_day))
+        day = new_day
     if day == 0:
-        img_link = "https://cdn.discordapp.com/attachments/827661547802198016/847616239572090900/mayfield-robotics-ceases-production-of-kuri-robot-amid-a-questionable-future.gif"
-        message_text = "In the meantime, I'm very excited to work with you and I want to show you a dance I've been working on. I hope you like it."
+        img_link = "https://amalnanavati.com/wp-content/uploads/2021/06/optimized_kuri_dance.gif"
+        message_text = "It's the first day! I'm very excited to work with you and I want to show you a dance I've been working on. I hope you like it."
         alt_text = "My big dance"
     elif day == 1:
         img_link = "https://www.cnet.com/a/img/JkD_3wBEktye-EV2e3G8OdbSGSI=/770x578/2017/01/03/026e660f-4525-4bc8-94f3-9a5e9c61a776/kuriproductphotos-4.jpg"
-        message_text = "I'm looking foward to starting the second day, here's a little token of my appriciation"
+        message_text = "I'm looking foward to starting the second day! Here's a little token of my appriciation"
         alt_text = "Thanks"
     elif day == 2:
         img_link = "https://thegadgetflow.com/wp-content/uploads/2017/01/Kuri-Intelligent-Home-Robot-004.jpg"
         message_text = "This is the last day, I hope you are ready to finish strong! Here's something that might inspire you."
         alt_text = "Party time!"
-    else:
-        img_link = ""
-        message_text = "I think something went wrong, sorry!"
-        alt_text = ""
     payload = {
         "ts": "",
         "channel": user_id,
         "username": "kuribot",
         "text": "Hi, it's Kuribot! I'm going to be starting soon. Get ready for some images.",
         "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": "Thanks for getting started, I'll send you a message soon after I get things set up."
-            }
-        },
+        # {
+        #     "type": "section",
+        #     "text": {
+        #         "type": "mrkdwn",
+        #         "text": "Thanks for getting started, I'll send you a message soon after I get things set up."
+        #     }
+        # },
         {
             "type": "section",
             "text": {
@@ -216,7 +131,7 @@ def post_images_intro(user_id, n_images):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "Hi, it's Kuribot with the \"Seeing Through the Eyes of a Robot\" research project. I took %d images I think you might like." % n_images
+                    "text": "Hi there, it's Kuribot!. I took %d images I think you might like." % n_images
                 }
             },
         ],
@@ -281,22 +196,6 @@ def post_image(user_id, image_url, image_description, message_i, n_images):
     			}
     		]
 		},
-        # {
-		# 	"type": "section",
-		# 	"text": {
-		# 		"type": "plain_text",
-		# 		"text": " ",
-		# 		"emoji": False
-		# 	}
-		# },
-        # {
-		# 	"type": "section",
-		# 	"text": {
-		# 		"type": "plain_text",
-		# 		"text": " ",
-		# 		"emoji": False
-		# 	}
-		# }
 	   ],
     }
     return payload
@@ -321,19 +220,16 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
         "Thank you, I've added your feedback to my database. I'd like to understand, why did you rate the photo this way?",
         "Thank you, I'm starting to understand your preferences better. I want to learn more about why you made that choice."
         ]
-    elif reaction == 1:
-        message_list = [
-        "Thank you, I'll use your response to choose better photos. I'd like to understand more about why you liked this photo. Was there an object in the photo that you liked? What was it?",
-        "Thank you, I've recorded your response, which I will learn from. I want to learn why you liked this photo, was there a particular object you liked?",
-        "Thank you, I've added your feedback to my database. If you tell me more about objects you liked in the photo, I can learn more efficiently",
-        "Thank you, I'm starting to understand your preferences better. Can you explain more about why you liked this photo? Any objects that you liked?"
-        ]
     else:
+        if reaction == 1:
+            prefix = ""
+        else:
+            prefix = "dis"
         message_list = [
-        "Thank you, I'll use your response to choose better photos. I'd like to understand more about why you disliked this photo. Was there an object in the photo that you disliked? What was it?",
-        "Thank you, I've recorded your response, which I will learn from. I want to learn why you disliked this photo, was there a particular object you disliked?",
-        "Thank you, I've added your feedback to my database. If you tell me more about objects you disliked in the photo, I can learn more efficiently",
-        "Thank you, I'm starting to understand your preferences better. Can you explain more about why you disliked this photo? Any objects that you disliked?"
+        "Thank you, I'll use your response to choose better photos. I'd like to understand more about why you %sliked this photo. Was there an object in the photo that you %sliked? What was it?" % (prefix, prefix),
+        "Thank you, I've recorded your response, which I will learn from. I want to learn why you %sliked this photo, was there a particular object you %sliked?" % (prefix, prefix),
+        "Thank you, I've added your feedback to my database. If you tell me more about objects you %sliked in the photo, I can learn more efficiently."  % (prefix),
+        "Thank you, I'm starting to understand your preferences better. Can you explain more about why you %sliked this photo? Any objects that you %sliked?" % (prefix, prefix)
         ]
 
     if reaction == 1:
@@ -416,7 +312,7 @@ def confirm_input_template(body, user_id, question, answer):
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": "Thanks for your input! You said: \""+ answer + "\""
+                "text": "You wrote: \""+ answer + "\""
                 }
         },
         ]
@@ -439,41 +335,20 @@ def confirm_input_template(body, user_id, question, answer):
 
     return response
 
-def end_block_template(user_id):
-    #Every two hours, when the photos are done, users receive one of five messages
-    message_list = [
-    "Thank you, we are done for this block. I'll send you more photos in about 2 hours",
-    "We are done for now, thank you for the responses. You will get more photos from me in about 2 hours",
-    "Great, that's it for now. I'll send you more photos in about 2 hours. Thank you.",
-    "Ok, that's it for now. Thank you for the help, I'll send some more photos in about 2 hours.",
-    "Thanks for your help. You've finished this block, and I'll have more photos for you about two hours."
-    ]
-    message = message_list[random.randrange(len(message_list))]
-    payload = {
-        "ts": "",
-        "channel": user_id,
-        "username": "kuribot",
-        "icon_emoji": ":robot_face:",
-        "text": "Hi, it's Kuribot! We are finished with this set",
-        #the below might cause issues, double check here
-        "replace_original":True,
-        "blocks": [
-        {
-            "type": "section",
-            "text": {
-                "type": "mrkdwn",
-                "text": message
-                }
-        },
-        ]
-    }
-    return payload
-
-def closing_day_template(user_id, random_id):
+def survey_template(user_id, random_id, day):
     #The study URL will need to be changed for the final version, but here's the temp one for testing
     #random_id will be generated beforehand and added to a dictionary to keep track of who got what random_id
-    study_url = "https://ucsantacruz.co1.qualtrics.com/jfe/form/SV_9uV0VU7U2epEviu?random_id="
-    #random_id = random.randomrange(100000,999999)
+
+    if day < 0 or day > 3:
+        new_day = abs(day) % 3
+        print("survey_template got incorrect day %d, setting to %d" % (day, new_day))
+        day = new_day
+    if day == 0 or day == 1:
+        survey_url = "https://ucsantacruz.co1.qualtrics.com/jfe/form/SV_ekRfwRiSbx2SK9g?random_id=" + str(random_id)
+        message = "Thank you for interacting with me today! Before you finish up for the day, please go to the following URL to complete a survey. The survey should take around 5 minutes. " + survey_url
+    else:
+        survey_url = "https://ucsantacruz.co1.qualtrics.com/jfe/form/SV_9uV0VU7U2epEviu?random_id=" + str(random_id)
+        message = "Thank you for interacting with me today! Today is the last day of the study. Please go to the following URL to complete the final survey, which should take around 10 minutes. " + survey_url + "\n\nA researcher will email you within a week regarding compensation. Please email cmavro@cs.washington.edu if you have any questions/concerns."
 
     payload = {
         "ts": "",
@@ -486,34 +361,9 @@ def closing_day_template(user_id, random_id):
     		"type": "section",
     		"text": {
     			"type": "mrkdwn",
-    			"text": "Thank you for responding to all the pictures, you've really helped me out. Before you finish up, please go to this URL:"+ study_url + str(random_id)+" to complete a survey and finish for today"
+    			"text": message
     	           }
         }
         ]
     }
-    return payload
-
-def closing_study_template(user_id, random_id):
-    #The study URL will need to be changed for the final version, but here's the temp one for testing
-    #random_id will be generated beforehand and added to a dictionary to keep track of who got what random_id
-
-    study_url = "https://ucsantacruz.co1.qualtrics.com/jfe/form/SV_9uV0VU7U2epEviu?random_id=" #Different URL for day survey vs end of study survey
-    #random_id = random.randomrange(100000,999999)
-
-    payload = {
-        "ts": "",
-        "channel": user_id,
-        "username": "kuribot",
-        "icon_emoji": ":robot_face:",
-        "text": "Hi, it's Kuribot! We are almost done",
-        "blocks": [
-    	{
-    		"type": "section",
-    		"text": {
-    			"type": "mrkdwn",
-    			"text": "Thank you for responding to all the pictures, you've really helped me out. Before you finish up, please go to this URL:"+ study_url + str(random_id)+" to complete a survey and finish the study"
-    	           }
-        }
-        ]
-    }
-    return payload
+    return payload, survey_url
