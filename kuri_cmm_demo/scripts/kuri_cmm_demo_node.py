@@ -422,7 +422,7 @@ class CMMDemo(object):
                     rospy.loginfo("Waiting for local_coverage_navigator_action server")
                     self.local_coverage_navigator_action.wait_for_server()
                     rospy.loginfo("Sending goal to local_coverage_navigator_action")
-                    self.local_coverage_navigator_action.send_goal(NavigateGoal())
+                    self.local_coverage_navigator_action.send_goal(NavigateGoal(effort=-1))
                     self.view_tuner.move_head() # Center the view_tuner head
                     self.open_eyes()
                 if self.subsampling_policy.subsample(img_msg): # This image was selected
