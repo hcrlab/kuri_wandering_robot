@@ -16,7 +16,6 @@
   </node>
 
   <!-- Autonomous Navigation -->
-  <param name='/local_coverage_navigator/run_test_thread' value="false"/>
   <include file="$(find local_coverage_navigation)/launch/kuri_local_navigator.launch" />
 
 </launch>

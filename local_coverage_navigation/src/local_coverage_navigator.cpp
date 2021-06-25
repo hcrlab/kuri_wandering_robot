@@ -59,9 +59,8 @@ namespace local_coverage_navigation {
     planner_plan_(NULL), latest_plan_(NULL), controller_plan_(NULL),
     runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
 
-    as_ = new NavigateActionServer(ros::NodeHandle(), "navigate", boost::bind(&LocalCoverageNavigator::executeCb, this, _1), false);
-
     ros::NodeHandle private_nh("~");
+    as_ = new NavigateActionServer(private_nh, "navigate", boost::bind(&LocalCoverageNavigator::executeCb, this, _1), false);
     ros::NodeHandle nh;
 
     recovery_trigger_ = PLANNING_R;
@@ -144,11 +143,7 @@ namespace local_coverage_navigation {
 
     //we're all set up now so we can start the action server
     as_->start();
-
-    private_nh.param("run_test_thread", run_test_thread_, true);
-    if (run_test_thread_) {
-      test_thread = new boost::thread(boost::bind(&LocalCoverageNavigator::testThread, this));
-    }
+    ROS_ERROR("Server started");
   }
 
 
@@ -246,12 +241,6 @@ namespace local_coverage_navigation {
     }
 
     return true;
-  }
-
-  void LocalCoverageNavigator::testThread(){
-    while (ros::ok()) {
-      executeCb(boost::make_shared<NavigateGoal>());
-    }
   }
 
 
@@ -420,16 +409,17 @@ inline double abs_angle_diff(const double x, const double y)
     ros::NodeHandle n;
     while(n.ok())
     {
-      if (!run_test_thread_) {
-        if (as_->isPreemptRequested())
-        {
-          ROS_INFO("Action Preempted");
-          // set the action state to preempted
-          publishZeroVelocity();
-          as_->setPreempted();
-          return -1;
-        }
+
+      if (as_->isPreemptRequested())
+      {
+        ROS_INFO("Action Preempted");
+        // set the action state to preempted
+        runPlanner_ = false;
+        publishZeroVelocity();
+        as_->setPreempted();
+        return -1;
       }
+
       //for timing that gives real time even in simulation
       ros::WallTime start = ros::WallTime::now();
       //the real work on pursuing a goal is done here
@@ -437,14 +427,11 @@ inline double abs_angle_diff(const double x, const double y)
 
       //if we're done, then we'll return from execute
       if (status == 1) {
-        if (!run_test_thread_) {
-          as_->setSucceeded(as_result);
-        }
+        as_->setSucceeded(as_result);
+
         return 0;
       } else if (status == -1) {
-        if (!run_test_thread_) {
-          as_->setAborted(as_result);
-        }
+        as_->setAborted(as_result);
         return -1;
       }
 
@@ -462,9 +449,8 @@ inline double abs_angle_diff(const double x, const double y)
 
 
     //if the node is killed then we'll abort and return
-    if (!run_test_thread_) {
-      as_->setAborted(as_result);
-    }
+    as_->setAborted(as_result);
+
     return -1;
   }
 
@@ -483,10 +469,9 @@ inline double abs_angle_diff(const double x, const double y)
     geometry_msgs::PoseStamped global_pose;
     getRobotPose(global_pose, controller_costmap_ros_);
     const geometry_msgs::PoseStamped& current_position = global_pose;
-    if (!run_test_thread_) {
-      as_feedback.base_position = global_pose;
-      as_->publishFeedback(as_feedback);
-    }
+    as_feedback.base_position = global_pose;
+    as_->publishFeedback(as_feedback);
+
 
     //check to see if we've moved far enough to reset our oscillation timeout
     if(distance(current_position, oscillation_pose_) >= oscillation_distance_)
