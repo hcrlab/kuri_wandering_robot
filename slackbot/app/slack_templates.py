@@ -367,3 +367,22 @@ def survey_template(user_id, random_id, day):
         ]
     }
     return payload, survey_url
+
+def low_battery_template(user_id, battery_pct):
+    payload = {
+        "ts": "",
+        "channel": user_id,
+        "username": "kuribot",
+        "icon_emoji": ":robot_face:",
+        "text": "Hi, it's Kuribot! We are almost done",
+        "blocks": [
+    	{
+    		"type": "section",
+    		"text": {
+    			"type": "mrkdwn",
+    			"text": ":rotating_light: :warning: My battery is low (*" + str(battery_pct) + "%*)!! Please come and put me on my charger! :warning: :rotating_light: "
+    	           }
+        }
+        ]
+    }
+    return payload

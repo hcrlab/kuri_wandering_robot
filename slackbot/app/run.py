@@ -35,35 +35,6 @@ class FlaskSlackbot(object):
         - flask_port is the port the Flask server will be launched at
         - slack_port is the port the Slack app will be launched at
         """
-        # Create and configure the Flask App
-        self.flask_app = Flask("slackbot")
-        self.flask_port = flask_port
-        self.flask_app.debug = False
-        self.flask_app.add_url_rule('/send_images',
-            view_func=self.send_images, methods=['POST'])
-        self.flask_app.add_url_rule('/get_num_users',
-            view_func=self.get_num_users, methods=['GET'])
-        self.flask_app.add_url_rule('/get_updates',
-            view_func=self.get_updates, methods=['POST'])
-
-        # Create the Slack app
-        self.slack_user_token = slackbot_conf['slack_user_token']
-        self.slack_app = App(
-            token=slackbot_conf['slack_bot_token'],
-            signing_secret=slackbot_conf['slack_signing_secret']
-        )
-        self.slack_port = slack_port
-        self.slack_app.action("action_id_check_mark")(self.action_button_check_mark)
-        self.slack_app.action("action_id_x")(self.action_button_x)
-        self.slack_app.action("confirm_input")(self.confirm_input)
-        self.slack_app.command("/test_get_images_2")(self.test_get_images)
-        self.slack_app.command("/test_end_of_day_message_0")(self.test_end_of_day_message_0)
-        self.slack_app.command("/test_end_of_day_message_1")(self.test_end_of_day_message_1)
-        self.slack_app.command("/test_end_of_day_message_2")(self.test_end_of_day_message_2)
-        self.slack_app.command("/send_daily_intro_message_0")(self.send_daily_intro_message_0)
-        self.slack_app.command("/send_daily_intro_message_1")(self.send_daily_intro_message_1)
-        self.slack_app.command("/send_daily_intro_message_2")(self.send_daily_intro_message_2)
-        self.slack_app.command("/test_pre_study_message")(self.test_pre_study_message)
 
         # Configure data storage
         self.data_base_dir = data_base_dir
@@ -94,6 +65,7 @@ class FlaskSlackbot(object):
 
         # Store the Slack users
         self.users = slackbot_conf['users_list']
+        self.low_battery_savior_user_id = slackbot_conf['low_battery_savior_user_id']
         self.users_to_configuration = {}
         for user in self.users:
             if user not in slackbot_conf:
@@ -103,6 +75,38 @@ class FlaskSlackbot(object):
         self.user_id_to_next_image_day = {}
         self.user_id_to_next_image_i = {}
         self.send_scheduled_messages()
+
+        # Create and configure the Flask App
+        self.flask_app = Flask("slackbot")
+        self.flask_port = flask_port
+        self.flask_app.debug = False
+        self.flask_app.add_url_rule('/send_images',
+            view_func=self.send_images, methods=['POST'])
+        self.flask_app.add_url_rule('/get_num_users',
+            view_func=self.get_num_users, methods=['GET'])
+        self.flask_app.add_url_rule('/get_updates',
+            view_func=self.get_updates, methods=['POST'])
+        self.flask_app.add_url_rule('/low_battery_alert',
+            view_func=self.low_battery_alert, methods=['POST'])
+
+        # Create the Slack app
+        self.slack_user_token = slackbot_conf['slack_user_token']
+        self.slack_app = App(
+            token=slackbot_conf['slack_bot_token'],
+            signing_secret=slackbot_conf['slack_signing_secret']
+        )
+        self.slack_port = slack_port
+        self.slack_app.action("action_id_check_mark")(self.action_button_check_mark)
+        self.slack_app.action("action_id_x")(self.action_button_x)
+        self.slack_app.action("confirm_input")(self.confirm_input)
+        self.slack_app.command("/test_get_images_2")(self.test_get_images)
+        self.slack_app.command("/test_end_of_day_message_0")(self.test_end_of_day_message_0)
+        self.slack_app.command("/test_end_of_day_message_1")(self.test_end_of_day_message_1)
+        self.slack_app.command("/test_end_of_day_message_2")(self.test_end_of_day_message_2)
+        self.slack_app.command("/send_daily_intro_message_0")(self.send_daily_intro_message_0)
+        self.slack_app.command("/send_daily_intro_message_1")(self.send_daily_intro_message_1)
+        self.slack_app.command("/send_daily_intro_message_2")(self.send_daily_intro_message_2)
+        self.slack_app.command("/test_pre_study_message")(self.test_pre_study_message)
 
     def send_scheduled_messages(self):
         for user_id in self.users_to_configuration:
@@ -282,6 +286,9 @@ class FlaskSlackbot(object):
             else:
                 next_image_timestamp = self.users_to_configuration[user_id]['daily_schedule'][self.user_id_to_next_image_day[user_id]]['images_sent_timestamps'][self.user_id_to_next_image_i[user_id]]
             self.sent_messages_database.add_user_send_image_time(user_id, next_image_timestamp)
+            self.database_updated()
+        else:
+            self.sent_messages_database.add_user_send_image_time(user_id, None)
             self.database_updated()
 
         return n_successes
@@ -754,6 +761,36 @@ class FlaskSlackbot(object):
         user_id = command["user_id"]
         self.send_pre_study_message(user_id)
 
+    def low_battery_alert(self):
+        """
+        POST method at the endpoint /low_battery_alert
+        Expects a json payload with keys:
+        - 'battery_pct' an int with the batteyr percentage.
+
+        Returns a json payload with keys:
+        - 'success' a bool indicating whether the message was sent
+
+        """
+        battery_pct = int(request.json['battery_pct'])
+        user_id = self.low_battery_savior_user_id
+
+        payload = slack_templates.low_battery_template(user_id, battery_pct)
+        response = self.slack_app.client.chat_postMessage(**payload)
+        if not response["ok"]:
+            logging.info("Error sending low_battery_alert to user %s: %s, battery_pct %s" % (user_id, response, battery_pct))
+            success = False
+        else:
+            ts = response["message"]["ts"]
+            # TODO: Should we log this anywhere? CSV? Sent messages DB?
+            success = True
+
+        response = self.flask_app.response_class(
+            response=json.dumps({'success':success}),
+            status=200,
+            mimetype='application/json'
+        )
+        return response
+
     def start(self):
         """
         Start the FlaskSlackbot
@@ -785,10 +822,14 @@ if __name__ == '__main__':
     root_logger.addHandler(console_handler)
 
     # Load the Slackbot configuration
-    slackbot_conf_filepath = "../cfg/slackbot.yaml"
+    # slackbot_conf_filepath = "../cfg/slackbot.yaml"
+    slackbot_conf_filepath = "../cfg/slackbot_cmm.yaml"
     with open(slackbot_conf_filepath, 'r') as f:
         slackbot_conf = yaml.load(f, Loader=yaml.FullLoader)
 
     # Create and start the FlaskSlackbot
-    server = FlaskSlackbot(slackbot_conf)
+    # server = FlaskSlackbot(slackbot_conf, flask_port=8194, slack_port=8193,
+    #     sent_messages_database_filepath="../cfg/sent_messages_database.pkl")
+    server = FlaskSlackbot(slackbot_conf, flask_port=3001, slack_port=3000,
+        sent_messages_database_filepath="../cfg/sent_messages_database_cmm.pkl")
     server.start()
