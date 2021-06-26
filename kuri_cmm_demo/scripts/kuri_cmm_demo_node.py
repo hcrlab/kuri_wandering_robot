@@ -47,6 +47,7 @@ class CMMDemoState(Enum):
     INITIALIZE_TUNER = 2
     TUNE_IMAGE = 3
     TAKE_PICTURE = 4
+    CHARGING = 5
 
 class CMMDemo(object):
     """
@@ -62,6 +63,7 @@ class CMMDemo(object):
         Initialize an instance of the CMMDemo class
         """
         self.has_loaded = False
+        self.slackbot_url = slackbot_url
 
         # Load the user data from the Slackbot
         try:
@@ -109,6 +111,16 @@ class CMMDemo(object):
         self.eye_closed_position = 0.41
         self.eye_open_position = 0.0
 
+        # Parameters relevant to the battery
+        self.battery_sub = rospy.Subscriber(
+            "/mobile_base/power", Power, self.power_callback, queue_size=1)
+        self.previous_battery_lock = threading.Lock()
+        self.previous_battery = None
+        self.previous_dock_present = None
+        self.battery_notification_thresholds = [58, 20, 15, 10, 5, 4, 3, 2, 1]
+        self.to_charge_threshold = 60 # if the battery is less than this and you are docked, charge
+        self.charging_done_threshold = 65 # if the batter is greater than this and you are charging, switch back to NORMAL
+
         # Parameters relevant to object detection
         self.object_detection_srv_name = object_detection_srv
         self.object_detection_srv_lock = threading.Lock()
@@ -126,7 +138,6 @@ class CMMDemo(object):
         self.to_send_policy_lock = threading.Lock()
 
         # Parameters relevant to communicating with the Slackbot
-        self.slackbot_url = slackbot_url
         self.slackbot_responses_thread = threading.Thread(
             target=self.get_slackbot_updates,
         )
@@ -217,10 +228,11 @@ class CMMDemo(object):
         detected_objects_msg = object_detection_response.detected_objects
 
         # Determine whether to send the image
-        with self.to_send_policy_lock:
-            # Get the image vector
-            img_vector = self.to_send_policy.vectorize(detected_objects_msg)
-            return img_vector, detected_objects_msg
+        # with self.to_send_policy_lock:
+
+        # Get the image vector
+        img_vector = self.to_send_policy.vectorize(detected_objects_msg)
+        return img_vector, detected_objects_msg
 
     def send_images(self, user, n_images=5, n_objects=5, debug=False):
         """
@@ -234,7 +246,8 @@ class CMMDemo(object):
             for img_vector in img_vectors:
                 num_new_objects = self.sent_messages_database.get_num_objects() - img_vector.shape[0]
                 img_vector = np.pad(img_vector, (0, num_new_objects), 'constant', constant_values=0)
-                probabilities.append(self.to_send_policy.get_probability(user, img_vector))
+                with self.to_send_policy_lock:
+                    probabilities.append(self.to_send_policy.get_probability(user, img_vector))
 
             # Determine the images to send.
             # TODO: make this not just take the 5 max, but also account for the
@@ -292,7 +305,8 @@ class CMMDemo(object):
         self.users_to_send_to_final will like. When send_images is called for
         a user, the top n images from that set are sent.
         """
-        img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
+        with self.to_send_policy_lock:
+            img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
 
         rospy.loginfo("Store image! For users %s" % self.users_to_send_to_final)
         img_cv2 = cv2.imdecode(np.fromstring(img_msg.data, np.uint8), cv2.IMREAD_COLOR)
@@ -311,12 +325,12 @@ class CMMDemo(object):
         TODO: if the state changes from NORMAL, return.
         """
         rospy.logdebug("Got subsampled image!")
-        img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
-
-        # Determine whether to send the image
         with self.to_send_policy_lock:
+            img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
+
+            # Determine whether to send the image
             to_send = self.to_send_policy.to_send_policy(img_vector)
-        rospy.loginfo("to_send_policy output %s" % to_send)
+            rospy.loginfo("to_send_policy output %s" % to_send)
 
         # If we haven't sent an image to the user in more than self.max_time_between_stored_images
         # seconds, send it.
@@ -425,14 +439,21 @@ class CMMDemo(object):
                     self.local_coverage_navigator_action.send_goal(NavigateGoal())
                     self.view_tuner.move_head() # Center the view_tuner head
                     self.open_eyes()
-                if self.subsampling_policy.subsample(img_msg): # This image was selected
-                    thread = threading.Thread(
-                        target=self.subsampled_image,
-                        args=(img_msg,)
-                    )
-                    thread.start()
-                else: # This image was not selected
-                    pass
+                with self.previous_battery_lock:
+                    if self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present:
+                        self.close_eyes()
+                        self.state = CMMDemoState.CHARGING
+                        self.local_coverage_navigator_action.cancel_all_goals()
+                        rospy.loginfo("State: NORMAL ==> CHARGING")
+                    else:
+                        if self.subsampling_policy.subsample(img_msg): # This image was selected
+                            thread = threading.Thread(
+                                target=self.subsampled_image,
+                                args=(img_msg,)
+                            )
+                            thread.start()
+                        else: # This image was not selected
+                            pass
             elif self.state == CMMDemoState.INITIALIZE_TUNER:
                 connected_components_cv2 = self.view_tuner.initialize_tuner(img_msg)
                 if self.visualize_view_tuner:
@@ -462,9 +483,49 @@ class CMMDemo(object):
                 self.view_tuner.deinitialize_tuner()
                 self.state = CMMDemoState.NORMAL
                 rospy.loginfo("State: TAKE_PICTURE ==> NORMAL")
+            elif self.state == CMMDemoState.CHARGING:
+                with self.previous_battery_lock:
+                    if self.previous_battery is None or not self.previous_dock_present or  self.previous_battery >= self.charging_done_threshold:
+                        self.state = CMMDemoState.NORMAL
+                        rospy.loginfo("State: CHARGING ==> NORMAL")
             state_at_end_of_loop = self.state
             self.state_changed = (state_at_start_of_loop != state_at_end_of_loop)
 
+    def power_callback(self, msg):
+        """
+        Callback function for Kuri's power update
+        """
+        if not self.has_loaded: return
+        with self.state_lock:
+            with self.previous_battery_lock:
+                self.previous_dock_present = msg.dock_present
+                if self.state == CMMDemoState.CHARGING:
+                    self.previous_battery = msg.battery.pct
+                else:
+                    update_previous_battery = True
+                    if msg.battery.pct <= self.battery_notification_thresholds[0]:
+                        for i in range(len(self.battery_notification_thresholds)):
+                            if (self.previous_battery is None or self.previous_battery > self.battery_notification_thresholds[i]) and msg.battery.pct <= self.battery_notification_thresholds[i]:
+                                try:
+                                    # Request responses for those image_ids
+                                    rospy.loginfo("Sent battery request for pct %s" % msg.battery.pct)
+                                    res = requests.post(
+                                        os.path.join(self.slackbot_url, 'low_battery_alert'),
+                                        json={'battery_pct':msg.battery.pct},
+                                    )
+                                    res_json = res.json()
+                                    if not res_json['success']:
+                                        update_previous_battery = False
+                                except Exception as e:
+                                    rospy.logwarn("Error communicating with Slackbot /low_battery_alert at URL %s." % self.slackbot_url)
+                                    if "res" in locals():
+                                        rospy.logwarn("Response text %s." % res.text)
+                                    rospy.logwarn(traceback.format_exc())
+                                    rospy.logwarn("Error %s." % e)
+                                    update_previous_battery = False
+                                break
+                    if update_previous_battery and (self.previous_battery is None or msg.battery.pct < self.previous_battery):
+                        self.previous_battery = msg.battery.pct
 
     def get_slackbot_updates(self, refresh_secs=10.0):#30.0):#
         """
