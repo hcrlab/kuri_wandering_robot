@@ -83,7 +83,12 @@ class BayesianLogisticRegression(object):
         """
         k = theta.shape[0]
         mean_diff = theta-self.prior_mean
-        c0 = (k/2)*math.log(2*math.pi) + 0.5*math.log(np.linalg.det(self.prior_covariance))
+        # If the covariance matrix is too large and the values are small (e.g. defualt_variance < 1), then the determinant might be 0
+        if np.linalg.det(self.prior_covariance) == 0.0:
+            log_det = self.prior_covariance.shape[0]*math.log(self.default_variance)
+        else:
+            log_det = math.log(np.linalg.det(self.prior_covariance))
+        c0 = (k/2)*math.log(2*math.pi) + 0.5*log_det
         c1 = 0.5*np.dot(mean_diff.T, np.dot(np.linalg.inv(self.prior_covariance), mean_diff))
         return c0 + c1
 
