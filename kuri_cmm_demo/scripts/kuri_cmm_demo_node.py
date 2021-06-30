@@ -5,6 +5,7 @@ from actionlib_msgs.msg import GoalStatus
 from control_msgs.msg import JointTrajectoryControllerState, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from cv_bridge import CvBridge
 from kuri_cmm_demo.srv import ObjectDetection, ObjectDetectionResponse
+from kuri_cmm_demo.msg import Power
 from local_coverage_navigation.msg import NavigateAction, NavigateGoal
 import rospy
 from sensor_msgs.msg import CompressedImage, Image

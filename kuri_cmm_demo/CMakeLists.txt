@@ -54,6 +54,8 @@ add_message_files(
   ObjectInstance.msg
   Object.msg
   DetectedObjects.msg
+  Power.msg
+  BatteryCapacity.msg
 )
 
 ## Generate services in the 'srv' folder
