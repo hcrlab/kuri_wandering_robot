@@ -92,16 +92,25 @@ class ImageLoader(object):
                 val = [None, None, None]
 
             if return_img_cv2 and val[0] is None:
-                img_cv2 = cv2.imread(os.path.join(self.base_dir, str(img_id)+".jpg"))
-                val[0] = img_cv2
+                try:
+                    img_cv2 = cv2.imread(os.path.join(self.base_dir, str(img_id)+".jpg"))
+                    val[0] = img_cv2
+                except Exception as e:
+                    rospy.logwarn("Failed to get img_cv2 for img_id %s" % img_id)
             if return_img_vector and val[1] is None:
-                with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'r') as f:
-                    img_vector = np.array(json.load(f))
-                    val[1] = img_vector
+                try:
+                    with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'r') as f:
+                        img_vector = np.array(json.load(f))
+                        val[1] = img_vector
+                except Exception as e:
+                    rospy.logwarn("Failed to get img_vector for img_id %s" % img_id)
             if return_detected_objects_dict and val[2] is None:
-                with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'r') as f:
-                    detected_objects_dict = json.load(f)
-                    val[2] = detected_objects_dict
+                try:
+                    with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'r') as f:
+                        detected_objects_dict = json.load(f)
+                        val[2] = detected_objects_dict
+                except Exception as e:
+                    rospy.logwarn("Failed to get image for detected_objects %s" % img_id)
             self.add_to_cache(img_id, val)
             retval.append(val)
         return retval
@@ -220,10 +229,18 @@ class SentMessagesDatabase(object):
         indices = list(range(len(img_cv2s)))
         random.shuffle(indices)
         for i in indices:
-            final_img_cv2s.append(img_cv2s[i])
-            final_img_vectors.append(img_vectors[i])
-            final_detected_objects_dicts.append(detected_objects_dicts[i])
-            final_local_img_ids.append(local_img_ids[i])
+            remove_img = False
+            if return_img_cv2 and img_cv2s[i] is None:
+                remove_img = True
+            if return_img_vector and img_vectors[i] is None:
+                remove_img = True
+            if return_detected_objects_dict and detected_objects_dicts[i] is None:
+                remove_img = True
+            if not remove_img:
+                final_img_cv2s.append(img_cv2s[i])
+                final_img_vectors.append(img_vectors[i])
+                final_detected_objects_dicts.append(detected_objects_dicts[i])
+                final_local_img_ids.append(local_img_ids[i])
 
         retval = []
         if return_img_cv2:

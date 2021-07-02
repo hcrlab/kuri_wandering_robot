@@ -362,7 +362,7 @@ class CMMDemo(object):
         rospy.logdebug("Got subsampled image!")
         with self.to_send_policy_lock:
             img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
-            print("img_msg_to_img_vector finished", time.time())
+            # print("img_msg_to_img_vector finished", time.time())
             # Determine whether to send the image
             to_send = self.to_send_policy.to_send_policy(img_vector)
             rospy.loginfo("to_send_policy output %s" % to_send)
@@ -483,7 +483,7 @@ class CMMDemo(object):
         while not rospy.is_shutdown():
             rate.sleep()
             with self.state_lock:
-                print("State", self.state)
+                # print("State", self.state)
                 state_at_start_of_loop = self.state
                 if self.state == CMMDemoState.NORMAL:
                     goal_state = self.local_coverage_navigator_action.get_state()
@@ -494,9 +494,9 @@ class CMMDemo(object):
                         self.local_coverage_navigator_action.send_goal(NavigateGoal(effort=-1))
                         self.view_tuner.move_head() # Center the view_tuner head
                         self.open_eyes()
-                    print("Waiting for previous battery lock")
+                    # print("Waiting for previous battery lock")
                     with self.previous_battery_lock:
-                        print("NORMAL", self.previous_battery, self.previous_dock_present)
+                        # print("NORMAL", self.previous_battery, self.previous_dock_present)
                         if self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present:
                             self.close_eyes()
                             self.state = CMMDemoState.CHARGING
@@ -510,16 +510,16 @@ class CMMDemo(object):
                                 else:
                                     continue
                             if self.subsampling_policy.subsample(img_msg): # This image was selected
-                                print("subsampling_policy selected")
+                                # print("subsampling_policy selected")
                                 self.subsampled_image(img_msg)
-                                print("subsampling_policy done")
+                                # print("subsampling_policy done")
                                 # thread = threading.Thread(
                                 #     target=self.subsampled_image,
                                 #     args=(img_msg,)
                                 # )
                                 # thread.start()
                             else: # This image was not selected
-                                print("subsampling_policy not selected")
+                                # print("subsampling_policy not selected")
                                 pass
                 elif self.state == CMMDemoState.INITIALIZE_TUNER:
                     with self.latest_image_lock:

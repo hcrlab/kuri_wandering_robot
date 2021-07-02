@@ -116,19 +116,19 @@ class ToSendPolicy(object):
         # Determine which human(s) to send it to
         to_send = np.zeros((self.n_users,), dtype=np.bool)
         for human_i in range(self.n_users):
-            print("human_i", human_i, time.time())
+            # print("human_i", human_i, time.time())
             if self.user_to_learning_condition[human_i] == 1:
                 # Sample a human preference vector
                 mean = self.beliefs[human_i].get_mean()
                 cov = self.beliefs[human_i].get_covariance()
-                print("cov", time.time())
+                # print("cov", time.time())
                 # sampled_theta = multivariate_normal.rvs(mean=mean, cov=cov)
                 sampled_theta = np.random.multivariate_normal(mean=mean, cov=cov)
-                print("sampled_theta", time.time())
+                # print("sampled_theta", time.time())
                 # Behave optimally with regards to sampled_theta
                 human_preference = np.dot(sampled_theta, context)
                 probability_of_liking = 1.0 / (1+math.exp(-1*human_preference))
-                print("probability_of_liking", time.time())
+                # print("probability_of_liking", time.time())
                 if probability_of_liking > (self.human_send_penalty - self.human_dislike_reward)/(self.human_like_reward - self.human_dislike_reward):
                     to_send[human_i] = True
             else:
