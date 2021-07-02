@@ -105,6 +105,46 @@ class ToSendPolicy(object):
         """
         return np.insert(img_vector, 0, 1., axis=0)
 
+    @staticmethod
+    def multivariate_normal_sample(local_mean, local_covariance, permutation,
+        partition_point, reduce_dimensionality=True):
+        """
+        First applies the permutation to the mean and covariance. Then, applies
+        the algorithm at the below link, where partition_point elements are
+        included in the first partition.
+
+        https://en.wikipedia.org/wiki/Multivariate_normal_distribution#Conditional_distributions
+
+        In practice, this should be called such that permutation applied to
+        context results in all the 0 elements being after all the non-zero
+        elements. Further, partition_point should be the number of non-zero
+        elements.
+        """
+        if reduce_dimensionality:
+            inv_permutation = np.argsort(permutation)
+
+            mean_permuted = local_mean[permutation]
+            covariance_permuted = local_covariance[:,permutation][permutation,:]
+
+            mean_1 = mean_permuted[:partition_point]
+            mean_2 = mean_permuted[partition_point:]
+
+            cov_11 = covariance_permuted[:partition_point,:partition_point]
+            cov_12 = covariance_permuted[:partition_point,partition_point:]
+            cov_21 = covariance_permuted[partition_point:,:partition_point]
+            cov_22 = covariance_permuted[partition_point:,partition_point:]
+
+            mean_conditional = mean_1 #+ np.dot(cov_12, np.dot(np.linalg.inv(cov_22), (mean_2 - mean_2)))
+            covariance_conditional = cov_11 - np.dot(cov_12, np.dot(np.linalg.inv(cov_22), cov_21))
+
+            sampled_theta_1 = np.random.multivariate_normal(mean=mean_conditional, cov=covariance_conditional)
+            sampled_theta_permuted = np.concatenate([sampled_theta_1, mean_2])
+            sampled_theta = sampled_theta_permuted[inv_permutation]
+        else:
+            # sampled_theta = multivariate_normal.rvs(mean=local_mean, cov=local_covariance)
+            sampled_theta = np.random.multivariate_normal(mean=local_mean, cov=local_covariance)
+        return sampled_theta
+
     def to_send_policy(self, img_vector):
         """
         Returns a boolean vector of size self.n_users to indicate whether or
@@ -113,22 +153,26 @@ class ToSendPolicy(object):
         # Add an intercept term to the image
         context = ToSendPolicy.image_to_context(img_vector)
 
+        # To make the computation more efficient, we will first permute
+        # theta so that all the elements with a context of 0 are at the end.
+        # We will then simplify the multivariate sampling problem by taking
+        # cross-sections of the distribution (at the mean) for every element
+        # where the context is 0, and then sampling only for the elements
+        # where context is not 0. We will then reconstruct the sampled theta.
+        permutation = np.append(np.argwhere(context!=0), np.argwhere(context==0))
+        len_nonzero = np.count_nonzero(context)
+
         # Determine which human(s) to send it to
         to_send = np.zeros((self.n_users,), dtype=np.bool)
         for human_i in range(self.n_users):
-            # print("human_i", human_i, time.time())
             if self.user_to_learning_condition[human_i] == 1:
                 # Sample a human preference vector
                 mean = self.beliefs[human_i].get_mean()
                 cov = self.beliefs[human_i].get_covariance()
-                # print("cov", time.time())
-                # sampled_theta = multivariate_normal.rvs(mean=mean, cov=cov)
-                sampled_theta = np.random.multivariate_normal(mean=mean, cov=cov)
-                # print("sampled_theta", time.time())
+                sampled_theta = ToSendPolicy.multivariate_normal_sample(mean, cov, permutation, len_nonzero)
                 # Behave optimally with regards to sampled_theta
                 human_preference = np.dot(sampled_theta, context)
                 probability_of_liking = 1.0 / (1+math.exp(-1*human_preference))
-                # print("probability_of_liking", time.time())
                 if probability_of_liking > (self.human_send_penalty - self.human_dislike_reward)/(self.human_like_reward - self.human_dislike_reward):
                     to_send[human_i] = True
             else:
