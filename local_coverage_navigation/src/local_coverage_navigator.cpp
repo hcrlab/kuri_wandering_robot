@@ -296,7 +296,7 @@ inline double abs_angle_diff(const double x, const double y)
         raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
         double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
         double angle_diff = abs_angle_diff(current_angle, angle);
-        ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
+        //ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
         if (line_cost.cost < cheapest_cost) {
           cheapest_cost = line_cost.cost;
           cheapest_goal_i = i;
@@ -533,7 +533,7 @@ inline double abs_angle_diff(const double x, const double y)
       recovery_index_ = 0;
 
 
-    ROS_ERROR_STREAM("Cycling " << state_);
+    //ROS_ERROR_STREAM("Cycling " << state_);
     //the move_base state machine, handles the control logic for navigation
     switch(state_){
       //if we are in a planning state, then we'll attempt to make a plan
