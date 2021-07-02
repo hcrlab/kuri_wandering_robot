@@ -24,7 +24,8 @@ import yaml
 class FlaskSlackbot(object):
     def __init__(self, slackbot_conf, flask_port=8194, slack_port=8193,
         sent_messages_database_filepath="../cfg/sent_messages_database.pkl",
-        database_save_interval=1, data_base_dir="/home/ubuntu/kuri_cmm_demo/data/"):
+        database_save_interval=1, data_base_dir="/home/ubuntu/kuri_cmm_demo/data/",
+        csv_suffix=""):
         """
         Create the FlaskSlackbot.
 
@@ -41,11 +42,11 @@ class FlaskSlackbot(object):
         if not os.path.isdir(self.data_base_dir):
             os.makedirs(self.data_base_dir)
         # Each variable below contains the filename and the header row
-        self.received_images_csv = ("received_images.csv", ["Time", "Filepath", "Image ID", "Image URL", "Slackbot User ID", "Robot User ID"])
-        self.sent_images_csv = ("sent_images.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp"])
-        self.reactions_csv = ("reactions.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Reaction"])
-        self.followups_csv = ("followups.csv", ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Question", "Response"])
-        self.survey_csv = ("survey.csv", ["Time", "Survey Random ID", "Survey URL", "Day", "Slackbot User ID", "Message Timestamp"])
+        self.received_images_csv = ("received_images%s.csv" % csv_suffix, ["Time", "Filepath", "Image ID", "Image URL", "Slackbot User ID", "Robot User ID"])
+        self.sent_images_csv = ("sent_images%s.csv" % csv_suffix, ["Time", "Image URL", "Slackbot User ID", "Message Timestamp"])
+        self.reactions_csv = ("reactions%s.csv" % csv_suffix, ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Reaction"])
+        self.followups_csv = ("followups%s.csv" % csv_suffix, ["Time", "Image URL", "Slackbot User ID", "Message Timestamp", "Question", "Response"])
+        self.survey_csv = ("survey%s.csv" % csv_suffix, ["Time", "Survey Random ID", "Survey URL", "Day", "Is Last Day", "Slackbot User ID", "Message Timestamp"])
         for csv_filename, csv_header in [self.received_images_csv, self.sent_images_csv, self.reactions_csv, self.followups_csv, self.survey_csv]:
             csv_filepath = os.path.join(self.data_base_dir, csv_filename)
             if not os.path.exists(csv_filepath):
@@ -74,7 +75,6 @@ class FlaskSlackbot(object):
             self.users_to_configuration[user] = slackbot_conf[user]
         self.user_id_to_next_image_day = {}
         self.user_id_to_next_image_i = {}
-        self.send_scheduled_messages()
 
         # Create and configure the Flask App
         self.flask_app = Flask("slackbot")
@@ -102,13 +102,17 @@ class FlaskSlackbot(object):
         self.slack_app.command("/test_get_images_2")(self.test_get_images)
         self.slack_app.command("/test_end_of_day_message_0")(self.test_end_of_day_message_0)
         self.slack_app.command("/test_end_of_day_message_1")(self.test_end_of_day_message_1)
-        self.slack_app.command("/test_end_of_day_message_2")(self.test_end_of_day_message_2)
-        self.slack_app.command("/send_daily_intro_message_0")(self.send_daily_intro_message_0)
-        self.slack_app.command("/send_daily_intro_message_1")(self.send_daily_intro_message_1)
-        self.slack_app.command("/send_daily_intro_message_2")(self.send_daily_intro_message_2)
+        self.slack_app.command("/test_end_of_day_message_2_0")(self.test_end_of_day_message_2_0)
+        self.slack_app.command("/test_end_of_day_message_2_1")(self.test_end_of_day_message_2_1)
+        self.slack_app.command("/test_daily_intro_0")(self.send_daily_intro_message_0)
+        self.slack_app.command("/test_daily_intro_1")(self.send_daily_intro_message_1)
+        self.slack_app.command("/test_daily_intro_2")(self.send_daily_intro_message_2)
         self.slack_app.command("/test_pre_study_message")(self.test_pre_study_message)
 
+        self.send_scheduled_messages()
+
     def send_scheduled_messages(self):
+        print("self.users_to_configuration", self.users_to_configuration)
         for user_id in self.users_to_configuration:
             # Send all the scheduled messages
             if 'pre_study_message_timestamp' in self.users_to_configuration[user_id]:
@@ -121,6 +125,7 @@ class FlaskSlackbot(object):
 
             if 'daily_schedule' in self.users_to_configuration[user_id]:
                 for day in range(len(self.users_to_configuration[user_id]['daily_schedule'])):
+                    is_last_day = (day == len(self.users_to_configuration[user_id]['daily_schedule'])-1)
                     daily_schedule = self.users_to_configuration[user_id]['daily_schedule'][day]
 
                     intro_message_timestamp = daily_schedule['intro_message_timestamp']
@@ -130,12 +135,14 @@ class FlaskSlackbot(object):
                             self.sent_messages_database.scheduled_message_was_sent(user_id, intro_message_timestamp)
                             self.database_updated()
 
-                    survey_timestamp = daily_schedule['survey_timestamp']
-                    if not self.sent_messages_database.was_scheduled_message_sent(user_id, survey_timestamp):
-                        sent = self.send_end_of_day_message(user_id, day, survey_timestamp)
-                        if sent:
-                            self.sent_messages_database.scheduled_message_was_sent(user_id, survey_timestamp)
-                            self.database_updated()
+                    survey_timestamps = daily_schedule['survey_timestamps']
+                    for survey_i in range(len(survey_timestamps)):
+                        survey_timestamp = survey_timestamps[survey_i]
+                        if not self.sent_messages_database.was_scheduled_message_sent(user_id, survey_timestamp):
+                            sent = self.send_end_of_day_message(user_id, day, is_last_day, survey_i, survey_timestamp)
+                            if sent:
+                                self.sent_messages_database.scheduled_message_was_sent(user_id, survey_timestamp)
+                                self.database_updated()
 
             # Initialize the image send times to the first image send timestamp in the
             # future. Assumes timestamps across days and images are monotonically increasing
@@ -236,7 +243,7 @@ class FlaskSlackbot(object):
             image_ids.append(image_id)
         return image_ids
 
-    def send_images_to_slack(self, image_ids, image_urls, user_id, image_descriptions):
+    def send_images_to_slack(self, image_ids, image_urls, user_id, image_descriptions, objects):
         """
         Actually sends the Slack messages. Returns a boolean indicating whether
         the send was succesful or not.
@@ -250,14 +257,21 @@ class FlaskSlackbot(object):
                 payload = slack_templates.post_images_intro(user_id, n_images)
             else:
                 image_url = image_urls[i]
-                payload = slack_templates.post_image(user_id, image_url, image_descriptions[i], i, n_images)
+                payload = slack_templates.post_image(user_id, image_url, image_descriptions[i], i, n_images, objects[i])
 
             # Send the message
-            response = self.slack_app.client.chat_postMessage(**payload)
-            if not response["ok"]:
+            try:
+                response = self.slack_app.client.chat_postMessage(**payload)
+                if not response["ok"]:
+                    logging.info("Error sending file to user %s: %s" % (user_id, response))
+                    continue
+                ts = response["message"]["ts"]
+            except Exception as e:
                 logging.info("Error sending file to user %s: %s" % (user_id, response))
-                continue
-            ts = response["message"]["ts"]
+                if "response" in locals():
+                    logging.info("Response text %s." % response.text)
+                logging.info(traceback.format_exc())
+                logging.info("Error %s." % e)
 
             # Store a reference to the message
             if i > -1:
@@ -330,6 +344,7 @@ class FlaskSlackbot(object):
             images_bytes.append(image_bytes)
         user = request.json['user']
         user_id = self.users[user]
+        objects = request.json['objects']
 
         image_ids = self.get_image_ids(images_bytes)
         image_filepaths = self.save_images(images_bytes, image_ids)
@@ -368,7 +383,7 @@ class FlaskSlackbot(object):
         else:
             image_descriptions = [None for _ in range(len(image_ids))]
 
-        n_successes = self.send_images_to_slack(image_ids, image_urls, user_id, image_descriptions)
+        n_successes = self.send_images_to_slack(image_ids, image_urls, user_id, image_descriptions, objects)
 
         response = self.flask_app.response_class(
             response=json.dumps({'image_ids':image_ids_to_return, 'n_successes':n_successes}),
@@ -497,8 +512,38 @@ class FlaskSlackbot(object):
         ts = body["container"]["message_ts"]
         image_url = self.body_to_image_url(body)
 
+        # Determine the expression of curiosity condition
+        if user_id in self.users_to_configuration and 'daily_schedule' in self.users_to_configuration[user_id]:
+            # If the message was sent after the intro message on the last day
+            if float(ts) > self.users_to_configuration[user_id]['daily_schedule'][-1]['intro_message_timestamp']:
+                # If the message was sent before the first survey timestamp on the last day
+                if float(ts) < self.users_to_configuration[user_id]['daily_schedule'][-1]['survey_timestamps'][0]:
+                    # We are in the first condition for this user. Assign it based on their order, where 0 means "no curiosity first" and 1 means "curiosity first"
+                    if self.users_to_configuration[user_id]['order'] == 0:
+                        expression_of_curiosity_condition = 0
+                    elif self.users_to_configuration[user_id]['order'] == 1:
+                        expression_of_curiosity_condition = 2
+                    else:
+                        print("Unknown order %s, setting it to 0" % repr(self.users_to_configuration[user_id]['order']))
+                        expression_of_curiosity_condition = 0
+                else:
+                    # We are in the second condition for this user. Assign it based on their order, where 0 means "no curiosity first" and 1 means "curiosity first"
+                    if self.users_to_configuration[user_id]['order'] == 0:
+                        expression_of_curiosity_condition = 2
+                    elif self.users_to_configuration[user_id]['order'] == 1:
+                        expression_of_curiosity_condition = 0
+                    else:
+                        print("Unknown order %s, setting it to 0" % repr(self.users_to_configuration[user_id]['order']))
+                        expression_of_curiosity_condition = 0
+            else:
+                # This message was sent before the last day message, so it is "no curiosity"
+                expression_of_curiosity_condition = 0
+        else:
+            # "no curiosity" is standard if there are no details for the user
+            expression_of_curiosity_condition = 0
+
         # Send the followup question
-        response = slack_templates.action_button_check_mark_or_x(body, user_id, self.users_to_configuration[user_id]['expression_of_curiosity_condition'], reaction)
+        response = slack_templates.action_button_check_mark_or_x(body, user_id, expression_of_curiosity_condition, reaction)
         respond(response)
         # response = self.slack_app.client.chat_update(channel=body["container"]["channel_id"], ts=ts, **response)
         # if not response["ok"]:
@@ -599,7 +644,7 @@ class FlaskSlackbot(object):
         logging.info("test_end_of_day_message_0")
         day = 0
         user_id = command["user_id"]
-        self.send_end_of_day_message(user_id, day)
+        self.send_end_of_day_message(user_id, day, False, 0)
 
     def test_end_of_day_message_1(self, ack, say, command, event, respond):
         """
@@ -611,26 +656,38 @@ class FlaskSlackbot(object):
         logging.info("test_end_of_day_message_1")
         day = 1
         user_id = command["user_id"]
-        self.send_end_of_day_message(user_id, day)
+        self.send_end_of_day_message(user_id, day, False, 0)
 
-    def test_end_of_day_message_2(self, ack, say, command, event, respond):
+    def test_end_of_day_message_2_0(self, ack, say, command, event, respond):
         """
-        Bolt App callback for when the user types /test_end_of_day_message_2 into the
+        Bolt App callback for when the user types /test_end_of_day_message_2_0 into the
         app.
         """
         # Acknowledge the command
         ack()
-        logging.info("test_end_of_day_message_2")
+        logging.info("test_end_of_day_message_2_0")
         day = 2
         user_id = command["user_id"]
-        self.send_end_of_day_message(user_id, day)
+        self.send_end_of_day_message(user_id, day, True, 0)
 
-    def send_end_of_day_message(self, user_id, day, timestamp=None):
+    def test_end_of_day_message_2_1(self, ack, say, command, event, respond):
+        """
+        Bolt App callback for when the user types /test_end_of_day_message_2_1 into the
+        app.
+        """
+        # Acknowledge the command
+        ack()
+        logging.info("test_end_of_day_message_2_1")
+        day = 2
+        user_id = command["user_id"]
+        self.send_end_of_day_message(user_id, day, True, 1)
+
+    def send_end_of_day_message(self, user_id, day, is_last_day, survey_i, timestamp=None):
         # Assign a unique random ID
         sent = False
         if user_id in self.users:
-            random_id = self.sent_messages_database.get_random_id()
-            payload, survey_url = slack_templates.survey_template(user_id, random_id, day)
+            random_id = self.sent_messages_database.get_random_id(user_id)
+            payload, survey_url = slack_templates.survey_template(user_id, random_id, is_last_day, survey_i, self.users_to_configuration[user_id]['order'])
 
             self.sent_messages_database.add_random_id(user_id, random_id, survey_url)
             self.database_updated()
@@ -657,7 +714,7 @@ class FlaskSlackbot(object):
             csv_filepath = os.path.join(self.data_base_dir, self.survey_csv[0])
             with open(csv_filepath, "a") as f:
                 csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-                csv_writer.writerow([time.time(), random_id, survey_url, day, user_id, ts])
+                csv_writer.writerow([time.time(), random_id, survey_url, day, is_last_day, user_id, ts])
         else:
             logging.info("Got /test_end_of_day_message from user_id %s not in self.users, ignoring" % user_id)
         return sent
@@ -821,15 +878,23 @@ if __name__ == '__main__':
     console_handler.setLevel(logging.INFO)
     root_logger.addHandler(console_handler)
 
+    is_deployed = True
+
     # Load the Slackbot configuration
-    # slackbot_conf_filepath = "../cfg/slackbot.yaml"
-    slackbot_conf_filepath = "../cfg/slackbot_cmm.yaml"
+    if is_deployed:
+        slackbot_conf_filepath = "../cfg/slackbot.yaml"
+    else:
+        slackbot_conf_filepath = "../cfg/slackbot_cmm.yaml"
     with open(slackbot_conf_filepath, 'r') as f:
         slackbot_conf = yaml.load(f, Loader=yaml.FullLoader)
 
     # Create and start the FlaskSlackbot
-    # server = FlaskSlackbot(slackbot_conf, flask_port=8194, slack_port=8193,
-    #     sent_messages_database_filepath="../cfg/sent_messages_database.pkl")
-    server = FlaskSlackbot(slackbot_conf, flask_port=3001, slack_port=3000,
-        sent_messages_database_filepath="../cfg/sent_messages_database_cmm.pkl")
+    if is_deployed:
+        server = FlaskSlackbot(slackbot_conf, flask_port=8194, slack_port=8193,
+            sent_messages_database_filepath="../cfg/sent_messages_database.pkl",
+            csv_suffix="")
+    else:
+        server = FlaskSlackbot(slackbot_conf, flask_port=3001, slack_port=3000,
+            sent_messages_database_filepath="../cfg/sent_messages_database_cmm.pkl",
+            csv_suffix="_cmm")
     server.start()

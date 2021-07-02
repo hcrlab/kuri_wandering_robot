@@ -25,7 +25,7 @@ def load_images(folder_path):
 if __name__ == "__main__":
     # NEED TO CHANGE
     folder_path = "/home/ubuntu/stored_images/" # "/Users/amaln/Documents/HCRLab/kuri_photography_cmm_demo/20210419_Kuri_Moving_Around_UW_CSE2/original_subsampling_policy_1/" #
-    server_url = "http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194"
+    server_url = "http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:3001"
 
     n_images = 5 # Num images to send
 
@@ -72,7 +72,7 @@ if __name__ == "__main__":
                     image = cv2.imread(image_filenames[image_id])
                     images_to_send.append(base64.encodebytes(bytearray(np.array(cv2.imencode('.jpg', image)[1]).tostring())).decode('ascii'))
                     user_to_sent_images[user].append(image_id)
-                dict_to_send = {'images':images_to_send, 'user':user}
+                dict_to_send = {'images':images_to_send, 'user':user, 'objects': [['test_object_%d_%d' % (i, j) for i in range(5)] for j in range(n_images)]}
                 res = requests.post(server_url+'/send_images', json=dict_to_send)
                 slackbot_image_ids = res.json()["image_ids"]
                 for i in range(len(slackbot_image_ids)):
