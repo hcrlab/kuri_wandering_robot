@@ -59,7 +59,9 @@ class CMMDemo(object):
     the beliefs accordingly.
     """
     def __init__(self, img_topic, head_state_topic, object_detection_srv, slackbot_url,
-        send_messages_database_filepath, visualize_view_tuner=False, max_time_between_stored_images=15*60):
+        sent_messages_database_filepath, visualize_view_tuner=False,
+        max_time_between_stored_images=10*60, human_prior_filepath=None,
+        objects_filepath=None):
         """
         Initialize an instance of the CMMDemo class
         """
@@ -89,9 +91,20 @@ class CMMDemo(object):
         self.subsampling_policy = SubsamplingPolicy(
             rule='n_per_sec', rule_config={'n':1},
         )
-        # TODO: make this subscribe to madmux, controlled by a param
+
+        # # Parameters relevant to the camera
+        # self.use_madmux = use_madmux
+        # if self.use_madmux:
+        #     import madmux
+        #     self.bridge = CvBridge()
+        #     self.madmux_sub = madmux.Stream("/var/run/madmux/ch3.sock")
+        #     self.madmux_sub.register_cb(self.img_callback)
+        # else:
         self.img_sub = rospy.Subscriber(
             img_topic, CompressedImage, self.img_callback, queue_size=1)
+        self.latest_image = None
+        self.latest_image_lock = threading.Lock()
+        self.has_new_image = False
 
         # Initialize the state.
         self.state_lock = threading.Lock()
@@ -118,9 +131,9 @@ class CMMDemo(object):
         self.previous_battery_lock = threading.Lock()
         self.previous_battery = None
         self.previous_dock_present = None
-        self.battery_notification_thresholds = [58, 20, 15, 10, 5, 4, 3, 2, 1]
-        self.to_charge_threshold = 60 # if the battery is less than this and you are docked, charge
-        self.charging_done_threshold = 65 # if the batter is greater than this and you are charging, switch back to NORMAL
+        self.battery_notification_thresholds = [40, 30, 20, 15, 10, 5, 4, 3, 2, 1]
+        self.to_charge_threshold = 50 # if the battery is less than this and you are docked, charge
+        self.charging_done_threshold = 90 # if the batter is greater than this and you are charging, switch back to NORMAL
 
         # Parameters relevant to object detection
         self.object_detection_srv_name = object_detection_srv
@@ -128,14 +141,22 @@ class CMMDemo(object):
         self.object_detection_srv = rospy.ServiceProxy(object_detection_srv, ObjectDetection)
 
         # Parameters relevant to storing images and message IDs
-        self.send_messages_database_filepath = send_messages_database_filepath
-        self.sent_messages_database = SentMessagesDatabase.load(self.send_messages_database_filepath, self.n_users, self.user_to_learning_condition)
+        self.objects_filepath = objects_filepath
+        self.sent_messages_database_filepath = sent_messages_database_filepath
+        self.sent_messages_database = SentMessagesDatabase.load(
+            self.sent_messages_database_filepath, n_users=self.n_users,
+            user_to_learning_condition=self.user_to_learning_condition,
+            objects_filepath=self.objects_filepath)
         self.database_save_interval = 1
         self.database_updates_since_last_save = 0
 
         # Parameters relevant to determine whether to send the image
+        self.human_prior_filepath = human_prior_filepath
         self.max_time_between_stored_images = max_time_between_stored_images
-        self.to_send_policy = ToSendPolicy(self.sent_messages_database, n_users=self.n_users, user_to_learning_condition=self.user_to_learning_condition)
+        self.to_send_policy = ToSendPolicy(self.sent_messages_database,
+            n_users=self.n_users,
+            user_to_learning_condition=self.user_to_learning_condition,
+            human_prior_filepath=self.human_prior_filepath)
         self.to_send_policy_lock = threading.Lock()
 
         # Parameters relevant to communicating with the Slackbot
@@ -144,6 +165,11 @@ class CMMDemo(object):
         )
         self.slackbot_responses_thread.start()
 
+        # Parameters relevant to the state machine
+        self.state_machine_thread = threading.Thread(
+            target=self.state_machine_control_loop,
+        )
+        self.state_machine_thread.start()
 
         self.has_loaded = True
 
@@ -154,7 +180,7 @@ class CMMDemo(object):
         """
         self.database_updates_since_last_save += 1
         if self.database_updates_since_last_save % self.database_save_interval == 0:
-            self.sent_messages_database.save(self.send_messages_database_filepath)
+            self.sent_messages_database.save(self.sent_messages_database_filepath)
             rospy.logdebug("Saved sent_messages_database!")
 
     @staticmethod
@@ -163,7 +189,7 @@ class CMMDemo(object):
         """
         Returns True if img is sufficiently similar to most_recent_img to not
         sent it, False otherwise. Images are deemed to be similar if there
-        are at least num_new_objects_threshold objects that each had confidence
+        are at least objects_threshold objects that each had confidence
         >= object_confidence_threshold in one image but not the other.
 
         TODO: There is stochasticity in AWS Rekognition, and given two images
@@ -241,13 +267,13 @@ class CMMDemo(object):
         """
         # Get the images the robot thinks the user is likely to like, and
         # compute the likleihood that the user will like them
-        img_cv2s, img_vectors, detected_objects_msgs, local_img_ids = self.sent_messages_database.get_stored_images_for_user(user)
-        if len(img_cv2s) > 0:
+        img_vectors, local_img_ids = self.sent_messages_database.get_stored_images_for_user(user, return_img_cv2=False, return_img_vector=True, return_detected_objects_dict=False)
+        if len(img_vectors) > 0:
             probabilities = []
             for img_vector in img_vectors:
-                num_new_objects = self.sent_messages_database.get_num_objects() - img_vector.shape[0]
-                img_vector = np.pad(img_vector, (0, num_new_objects), 'constant', constant_values=0)
                 with self.to_send_policy_lock:
+                    num_new_objects = self.sent_messages_database.get_num_objects() - img_vector.shape[0]
+                    img_vector = np.pad(img_vector, (0, num_new_objects), 'constant', constant_values=0)
                     probabilities.append(self.to_send_policy.get_probability(user, img_vector))
 
             # Determine the images to send.
@@ -257,20 +283,26 @@ class CMMDemo(object):
             selected_images = []
             selected_images_debug_description = []
             selected_local_image_ids = []
+            top_object_names = []
             for i in top_img_indices:
-                img_cv2= img_cv2s[i]
                 local_img_id = local_img_ids[i]
+                img_cv2 = self.sent_messages_database.get_image(local_img_id, return_img_cv2=True, return_img_vector=False, return_detected_objects_dict=False)[0]
 
                 content = bytearray(np.array(cv2.imencode('.jpg', img_cv2)[1]).tostring())
                 selected_images.append(base64.b64encode(content).decode('ascii'))
                 selected_local_image_ids.append(local_img_id)
 
+                img_vector = img_vectors[i]
+                top_objects = np.argsort(img_vector)[-1:-n_objects-1:-1]
+                objects = self.sent_messages_database.get_objects()
+                top_object_names.append([])
+                for j in top_objects:
+                    object_name = objects[j]
+                    top_object_names[-1].append(object_name)
+
                 if debug:
                     probability = probabilities[i]
                     debug_description = "Kuri thinks your likelihood of liking this image is %.02f. " % probability
-                    img_vector = img_vectors[i]
-                    top_objects = np.argsort(img_vector)[-1:-n_objects-1:-1]
-                    objects = self.sent_messages_database.get_objects()
                     debug_description += "Kuri thinks the image has the following top-%d objects: " % n_objects
                     for j in top_objects:
                         object_name = objects[j]
@@ -284,6 +316,7 @@ class CMMDemo(object):
                 'images' : selected_images,
                 'user' : user,
                 'image_descriptions' : selected_images_debug_description,
+                'objects' : top_object_names,
                 # 'callback_url' : callback_url,
             }
             try:
@@ -294,7 +327,8 @@ class CMMDemo(object):
                 self.database_updated()
             except Exception as e:
                 rospy.logwarn("Error communicating with Slackbot /send_images at URL %s." % self.slackbot_url)
-                rospy.logwarn("Response text %s." % res.text)
+                if "res" in locals():
+                    rospy.logwarn("Response text %s." % res.text)
                 rospy.logwarn(traceback.format_exc())
                 rospy.logwarn("Error %s." % e)
         else:
@@ -328,7 +362,7 @@ class CMMDemo(object):
         rospy.logdebug("Got subsampled image!")
         with self.to_send_policy_lock:
             img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
-
+            print("img_msg_to_img_vector finished", time.time())
             # Determine whether to send the image
             to_send = self.to_send_policy.to_send_policy(img_vector)
             rospy.loginfo("to_send_policy output %s" % to_send)
@@ -345,33 +379,32 @@ class CMMDemo(object):
                 users_who_havent_had_an_image_recently.append(user)
         rospy.loginfo("users added due to not having an image sent recently %s" % (users_who_havent_had_an_image_recently))
 
-        with self.state_lock:
-            rospy.logdebug("with state_lock")
-            if self.state == CMMDemoState.NORMAL and np.any(to_send):
-                # Remove any users who got a sufficiently similar image recently
-                users_to_send_to_initial = np.where(to_send)[0].tolist()
-                users_to_not_send_to = []
-                self.users_to_send_to_final = []
-                rospy.logdebug("img_vector %s" % (img_vector))
-                for user in users_to_send_to_initial:
-                    most_recent_stored_img_cv2s, most_recent_stored_img_vectors, _ = self.sent_messages_database.get_most_recent_stored_and_sent_images(user)
-                    rospy.logdebug("user %d most_recent_stored_img_cv2s %s, most_recent_stored_img_vectors %s" % (user, most_recent_stored_img_cv2s, most_recent_stored_img_vectors))
-                    is_similar = CMMDemo.is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors, img_msg, img_vector, return_similarity=False)
-                    # is_similar, object_similarities, image_similarities = CMMDemo.is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors, img_msg, img_vector, return_similarity=True)
-                    # rospy.loginfo("user %d object_similarities %s, image_similarities %s" % (user, object_similarities, image_similarities))
-                    if user in users_who_havent_had_an_image_recently or not is_similar:
-                        self.users_to_send_to_final.append(user)
-                    else:
-                        users_to_not_send_to.append(user)
-                rospy.loginfo("Not storing it for users %s due to similarity" % users_to_not_send_to)
-                rospy.logdebug("most_recent_stored_img_vectors %s" % most_recent_stored_img_vectors)
-                rospy.logdebug("                 img_vector %s" % img_vector)
-                # Skip the image if there are no users to send it to
-                if len(self.users_to_send_to_final) == 0:
-                    return
-                self.state = CMMDemoState.INITIALIZE_TUNER
-                self.local_coverage_navigator_action.cancel_all_goals()
-                rospy.loginfo("State: NORMAL ==> INITIALIZE_TUNER")
+        rospy.logdebug("with state_lock")
+        if self.state == CMMDemoState.NORMAL and np.any(to_send):
+            # Remove any users who got a sufficiently similar image recently
+            users_to_send_to_initial = np.where(to_send)[0].tolist()
+            users_to_not_send_to = []
+            self.users_to_send_to_final = []
+            rospy.logdebug("img_vector %s" % (img_vector))
+            for user in users_to_send_to_initial:
+                most_recent_stored_img_cv2s, most_recent_stored_img_vectors = self.sent_messages_database.get_most_recent_stored_and_sent_images(user)
+                rospy.logdebug("user %d most_recent_stored_img_cv2s %s, most_recent_stored_img_vectors %s" % (user, most_recent_stored_img_cv2s, most_recent_stored_img_vectors))
+                is_similar = CMMDemo.is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors, img_msg, img_vector, return_similarity=False)
+                # is_similar, object_similarities, image_similarities = CMMDemo.is_similar(most_recent_stored_img_cv2s, most_recent_stored_img_vectors, img_msg, img_vector, return_similarity=True)
+                # rospy.loginfo("user %d object_similarities %s, image_similarities %s" % (user, object_similarities, image_similarities))
+                if user in users_who_havent_had_an_image_recently or not is_similar:
+                    self.users_to_send_to_final.append(user)
+                else:
+                    users_to_not_send_to.append(user)
+            rospy.loginfo("Not storing it for users %s due to similarity" % users_to_not_send_to)
+            rospy.logdebug("most_recent_stored_img_vectors %s" % most_recent_stored_img_vectors)
+            rospy.logdebug("                 img_vector %s" % img_vector)
+            # Skip the image if there are no users to send it to
+            if len(self.users_to_send_to_final) == 0:
+                return
+            self.state = CMMDemoState.INITIALIZE_TUNER
+            self.local_coverage_navigator_action.cancel_all_goals()
+            rospy.loginfo("State: NORMAL ==> INITIALIZE_TUNER")
 
 
     def open_eyes(self, duration_secs=0.2):
@@ -418,7 +451,7 @@ class CMMDemo(object):
         self.eyelid_controller_action.send_goal(goal)
         self.eyelid_controller_action.wait_for_result(duration)
 
-    def img_callback(self, img_msg):
+    def img_callback(self, data):
         """
         If this image gets subsampled, run self.subsampled_image(img_msg) (in a
         separate thread to avoid dropping messages on the img stream). Else,
@@ -429,68 +462,119 @@ class CMMDemo(object):
         madmux images
         """
         if not self.has_loaded: return
-        rospy.logdebug("Got image!")
-        with self.state_lock:
-            state_at_start_of_loop = self.state
-            if self.state == CMMDemoState.NORMAL:
-                if self.state_changed or self.local_coverage_navigator_action.get_state() == GoalStatus.ABORTED:
-                    rospy.loginfo("Waiting for local_coverage_navigator_action server")
-                    self.local_coverage_navigator_action.wait_for_server()
-                    rospy.loginfo("Sending goal to local_coverage_navigator_action")
-                    self.local_coverage_navigator_action.send_goal(NavigateGoal(effort=-1))
-                    self.view_tuner.move_head() # Center the view_tuner head
-                    self.open_eyes()
-                with self.previous_battery_lock:
-                    if self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present:
-                        self.close_eyes()
-                        self.state = CMMDemoState.CHARGING
-                        self.local_coverage_navigator_action.cancel_all_goals()
-                        rospy.loginfo("State: NORMAL ==> CHARGING")
+
+        # if self.use_madmux:
+        #     # Read the bytes as a jpeg image
+        #     data = np.fromstring(data, np.uint8)
+        #     decoded = cv2.imdecode(data, cv2.CV_LOAD_IMAGE_COLOR)
+        #     img_msg = self.bridge.cv2_to_compressed_imgmsg(decoded)
+        # else:
+        img_msg = data
+
+        with self.latest_image_lock:
+            self.latest_image = img_msg
+            self.has_new_image = True
+
+    def state_machine_control_loop(self, rate_hz=2):
+        """
+        rate is in Hz
+        """
+        rate = rospy.Rate(rate_hz)
+        while not rospy.is_shutdown():
+            rate.sleep()
+            with self.state_lock:
+                print("State", self.state)
+                state_at_start_of_loop = self.state
+                if self.state == CMMDemoState.NORMAL:
+                    goal_state = self.local_coverage_navigator_action.get_state()
+                    if self.state_changed or goal_state == GoalStatus.ABORTED or goal_state == GoalStatus.SUCCEEDED:
+                        rospy.loginfo("Waiting for local_coverage_navigator_action server")
+                        self.local_coverage_navigator_action.wait_for_server()
+                        rospy.loginfo("Sending goal to local_coverage_navigator_action")
+                        self.local_coverage_navigator_action.send_goal(NavigateGoal(effort=-1))
+                        self.view_tuner.move_head() # Center the view_tuner head
+                        self.open_eyes()
+                    print("Waiting for previous battery lock")
+                    with self.previous_battery_lock:
+                        print("NORMAL", self.previous_battery, self.previous_dock_present)
+                        if self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present:
+                            self.close_eyes()
+                            self.state = CMMDemoState.CHARGING
+                            self.local_coverage_navigator_action.cancel_all_goals()
+                            rospy.loginfo("State: NORMAL ==> CHARGING")
+                        else:
+                            with self.latest_image_lock:
+                                if self.has_new_image:
+                                    img_msg = self.latest_image
+                                    self.has_new_image = False
+                                else:
+                                    continue
+                            if self.subsampling_policy.subsample(img_msg): # This image was selected
+                                print("subsampling_policy selected")
+                                self.subsampled_image(img_msg)
+                                print("subsampling_policy done")
+                                # thread = threading.Thread(
+                                #     target=self.subsampled_image,
+                                #     args=(img_msg,)
+                                # )
+                                # thread.start()
+                            else: # This image was not selected
+                                print("subsampling_policy not selected")
+                                pass
+                elif self.state == CMMDemoState.INITIALIZE_TUNER:
+                    with self.latest_image_lock:
+                        if self.has_new_image:
+                            img_msg = self.latest_image
+                            self.has_new_image = False
+                        else:
+                            continue
+                    connected_components_cv2 = self.view_tuner.initialize_tuner(img_msg)
+                    if self.visualize_view_tuner:
+                        connected_components_msg = self.bridge.cv2_to_imgmsg(connected_components_cv2, encoding="passthrough")
+                        connected_components_msg.step = int(connected_components_msg.step)
+                        self.img_pub_connected_components.publish(connected_components_msg)
+                    self.state = CMMDemoState.TUNE_IMAGE
+                    rospy.loginfo("State: INITIALIZE_TUNER ==> TUNE_IMAGE")
+                elif self.state == CMMDemoState.TUNE_IMAGE:
+                    with self.latest_image_lock:
+                        if self.has_new_image:
+                            img_msg = self.latest_image
+                            self.has_new_image = False
+                        else:
+                            continue
+                    if self.visualize_view_tuner:
+                        is_done, img_annotated = self.view_tuner.tune_image(img_msg, return_annotated_img=True)
+
+                        if img_annotated is not None:
+                            img_msg_annotated = self.bridge.cv2_to_imgmsg(img_annotated, encoding="passthrough")
+                            img_msg_annotated.step = int(img_msg_annotated.step)
+                            self.img_pub_annotated.publish(img_msg_annotated)
                     else:
-                        if self.subsampling_policy.subsample(img_msg): # This image was selected
-                            thread = threading.Thread(
-                                target=self.subsampled_image,
-                                args=(img_msg,)
-                            )
-                            thread.start()
-                        else: # This image was not selected
-                            pass
-            elif self.state == CMMDemoState.INITIALIZE_TUNER:
-                connected_components_cv2 = self.view_tuner.initialize_tuner(img_msg)
-                if self.visualize_view_tuner:
-                    connected_components_msg = self.bridge.cv2_to_imgmsg(connected_components_cv2, encoding="passthrough")
-                    connected_components_msg.step = int(connected_components_msg.step)
-                    self.img_pub_connected_components.publish(connected_components_msg)
-                self.state = CMMDemoState.TUNE_IMAGE
-                rospy.loginfo("State: INITIALIZE_TUNER ==> TUNE_IMAGE")
-            elif self.state == CMMDemoState.TUNE_IMAGE:
-                if self.visualize_view_tuner:
-                    is_done, img_annotated = self.view_tuner.tune_image(img_msg, return_annotated_img=True)
+                        is_done = self.view_tuner.tune_image(img_msg)
 
-                    if img_annotated is not None:
-                        img_msg_annotated = self.bridge.cv2_to_imgmsg(img_annotated, encoding="passthrough")
-                        img_msg_annotated.step = int(img_msg_annotated.step)
-                        self.img_pub_annotated.publish(img_msg_annotated)
-                else:
-                    is_done = self.view_tuner.tune_image(img_msg)
-
-                if is_done:
-                    # Sleep to allow the image to not be blurry
-                    rospy.sleep(2.0)
-                    self.state = CMMDemoState.TAKE_PICTURE
-                    rospy.loginfo("State: TUNE_IMAGE ==> TAKE_PICTURE")
-            elif self.state == CMMDemoState.TAKE_PICTURE:
-                self.store_image(img_msg)
-                self.view_tuner.deinitialize_tuner()
-                self.state = CMMDemoState.NORMAL
-                rospy.loginfo("State: TAKE_PICTURE ==> NORMAL")
-            elif self.state == CMMDemoState.CHARGING:
-                with self.previous_battery_lock:
-                    if self.previous_battery is None or not self.previous_dock_present or  self.previous_battery >= self.charging_done_threshold:
-                        self.state = CMMDemoState.NORMAL
-                        rospy.loginfo("State: CHARGING ==> NORMAL")
-            state_at_end_of_loop = self.state
-            self.state_changed = (state_at_start_of_loop != state_at_end_of_loop)
+                    if is_done:
+                        # Sleep to allow the image to not be blurry
+                        rospy.sleep(2.0)
+                        self.state = CMMDemoState.TAKE_PICTURE
+                        rospy.loginfo("State: TUNE_IMAGE ==> TAKE_PICTURE")
+                elif self.state == CMMDemoState.TAKE_PICTURE:
+                    with self.latest_image_lock:
+                        if self.has_new_image:
+                            img_msg = self.latest_image
+                            self.has_new_image = False
+                        else:
+                            continue
+                    self.store_image(img_msg)
+                    self.view_tuner.deinitialize_tuner()
+                    self.state = CMMDemoState.NORMAL
+                    rospy.loginfo("State: TAKE_PICTURE ==> NORMAL")
+                elif self.state == CMMDemoState.CHARGING:
+                    with self.previous_battery_lock:
+                        if self.previous_battery is None or not self.previous_dock_present or  self.previous_battery >= self.charging_done_threshold:
+                            self.state = CMMDemoState.NORMAL
+                            rospy.loginfo("State: CHARGING ==> NORMAL")
+                state_at_end_of_loop = self.state
+                self.state_changed = (state_at_start_of_loop != state_at_end_of_loop)
 
     def power_callback(self, msg):
         """
@@ -580,10 +664,14 @@ if __name__ == "__main__":
 
     img_topic = rospy.get_param('~img_topic', '/upward_looking_camera/compressed')
     object_detection_srv = rospy.get_param('~object_detection_srv', 'object_detection')
-    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:3001')
-    send_messages_database_filepath = rospy.get_param('~send_messages_database_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl")
+    slackbot_url = rospy.get_param('~slackbot_url', 'http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194')
+    sent_messages_database_filepath = rospy.get_param('~sent_messages_database_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/sent_messages_database.pkl")
+    human_prior_filepath = rospy.get_param('~human_prior_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/prior.npz")
+    objects_filepath = rospy.get_param('~objects_filepath', "/workspace/src/kuri_cmm_demo/kuri_cmm_demo/cfg/objects.json")
     head_state_topic = rospy.get_param('~head_state_topic', '/head_controller/state')
 
-    cmm_demo = CMMDemo(img_topic, head_state_topic, object_detection_srv, slackbot_url, send_messages_database_filepath, visualize_view_tuner=True)
+    cmm_demo = CMMDemo(img_topic, head_state_topic, object_detection_srv,
+        slackbot_url, sent_messages_database_filepath, visualize_view_tuner=False,
+        human_prior_filepath=human_prior_filepath, objects_filepath=objects_filepath)
 
     rospy.spin()

@@ -48,9 +48,11 @@ class ImageLoader(object):
             ]
         }
 
-    def add_to_cache(self, img_id, img_cv2, img_vector, detected_objects_dict):
-        self.cache[img_id] = (img_cv2, img_vector, detected_objects_dict)
-        self.img_id_order.append(img_id)
+    def add_to_cache(self, img_id, val):
+        was_already_in_cache = (img_id in self.cache)
+        self.cache[img_id] = val
+        if not was_already_in_cache:
+            self.img_id_order.append(img_id)
         while len(self.img_id_order) > self.cache_size:
             img_id_to_remove = self.img_id_order.pop(0)
             self.cache.pop(img_id)
@@ -75,25 +77,33 @@ class ImageLoader(object):
         with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'w') as f:
             json.dump(detected_objects_dict, f, indent=4)
         # Add to the cache
-        self.add_to_cache(img_id, img_cv2, img_vector, detected_objects_dict)
+        self.add_to_cache(img_id, val=[img_cv2, img_vector, detected_objects_dict])
 
-    def get_images(self, img_ids):
+    def get_images(self, img_ids, return_img_cv2=False, return_img_vector=True, return_detected_objects_dict=False):
         """
-        Gets images with the img_ids
+        Gets images with the img_ids. Is None for any values that were not requested.
         """
         retval = []
         for img_id in img_ids:
             if img_id in self.cache:
-                retval.append(self.cache[img_id])
+                val = self.cache[img_id]
             else:
                 # Load the files from the cache
+                val = [None, None, None]
+
+            if return_img_cv2 and val[0] is None:
                 img_cv2 = cv2.imread(os.path.join(self.base_dir, str(img_id)+".jpg"))
+                val[0] = img_cv2
+            if return_img_vector and val[1] is None:
                 with open(os.path.join(self.base_dir, str(img_id)+"_vector.json"), 'r') as f:
                     img_vector = np.array(json.load(f))
+                    val[1] = img_vector
+            if return_detected_objects_dict and val[2] is None:
                 with open(os.path.join(self.base_dir, str(img_id)+"_detected_objects.json"), 'r') as f:
                     detected_objects_dict = json.load(f)
-                self.add_to_cache(img_id, img_cv2, img_vector, detected_objects_dict)
-                retval.append((img_cv2, img_vector, detected_objects_dict))
+                    val[2] = detected_objects_dict
+            self.add_to_cache(img_id, val)
+            retval.append(val)
         return retval
 
 
@@ -112,7 +122,7 @@ class SentMessagesDatabase(object):
     Note that local_img_ids are not necessarily the same as slackbot_img_ids,
     but might be.
     """
-    def __init__(self, n_users=1, most_recent_images=5, user_to_learning_condition={0:1}):
+    def __init__(self, objects_filepath=None, n_users=1, most_recent_images=5, user_to_learning_condition={0:1}):
         """
         Initialize the database
         """
@@ -135,7 +145,12 @@ class SentMessagesDatabase(object):
         self.user_to_sent_local_img_ids = {}
 
         # The objects in our universe
-        self.objects = []
+        self.objects_filepath = objects_filepath
+        if self.objects_filepath is None:
+            self.objects = []
+        else:
+            with open(objects_filepath, 'r') as f:
+                self.objects = json.load(f)
 
         # Self-lock to ensure this class is thread-safe.
         # TODO: This can be improved with a read-write lock.
@@ -166,40 +181,60 @@ class SentMessagesDatabase(object):
                 self.user_to_stored_local_img_ids[user].append(local_img_id)
                 self.time_of_last_stored_image_per_user[user] = time.time()
 
+    def get_image(self, local_img_id, return_img_cv2=False, return_img_vector=True, return_detected_objects_dict=False):
+        img_cv2, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id], return_img_cv2, return_img_vector, return_detected_objects_dict)[0]
+        retval = []
+        if return_img_cv2:
+            retval.append(img_cv2)
+        if return_img_vector:
+            retval.append(img_vector)
+        if return_detected_objects_dict:
+            retval.append(detected_objects_msg)
+        return tuple(retval)
+
     def get_time_of_last_stored_image(self, user):
         with self.lock:
             return self.time_of_last_stored_image_per_user[user]
 
-    def get_stored_images_for_user(self, user):
+    def get_stored_images_for_user(self, user, return_img_cv2=False, return_img_vector=True, return_detected_objects_dict=False):
         """
         Returns the messages and vectors for every stored image for the user.
         """
-        img_msgs = []
+        img_cv2s = []
         img_vectors = []
-        detected_objects_msgs = []
+        detected_objects_dicts = []
         local_img_ids = []
         if user in self.user_to_stored_local_img_ids:
             for local_img_id in self.user_to_stored_local_img_ids[user]:
-                img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
+                img_cv2, img_vector, detected_objects_dict = self.image_loader.get_images([local_img_id], return_img_cv2, return_img_vector, return_detected_objects_dict)[0]
                 img_vectors.append(img_vector)
-                img_msgs.append(img_msg)
-                detected_objects_msgs.append(detected_objects_msg)
+                img_cv2s.append(img_cv2)
+                detected_objects_dicts.append(detected_objects_dict)
                 local_img_ids.append(local_img_id)
 
         # Randomly sort the lists, so that tie-breaking is randomized
-        final_img_msgs = []
+        final_img_cv2s = []
         final_img_vectors = []
-        final_detected_objects_msgs = []
+        final_detected_objects_dicts = []
         final_local_img_ids = []
-        indices = list(range(len(img_msgs)))
+        indices = list(range(len(img_cv2s)))
         random.shuffle(indices)
         for i in indices:
-            final_img_msgs.append(img_msgs[i])
+            final_img_cv2s.append(img_cv2s[i])
             final_img_vectors.append(img_vectors[i])
-            final_detected_objects_msgs.append(detected_objects_msgs[i])
+            final_detected_objects_dicts.append(detected_objects_dicts[i])
             final_local_img_ids.append(local_img_ids[i])
 
-        return final_img_msgs, final_img_vectors, final_detected_objects_msgs, final_local_img_ids
+        retval = []
+        if return_img_cv2:
+            retval.append(final_img_cv2s)
+        if return_img_vector:
+            retval.append(final_img_vectors)
+        if return_detected_objects_dict:
+            retval.append(final_detected_objects_dicts)
+
+        retval.append(final_local_img_ids)
+        return tuple(retval)
 
     def add_slackbot_image_id(self, local_img_ids, slackbot_img_ids, user):
         """
@@ -259,7 +294,7 @@ class SentMessagesDatabase(object):
                         retval[slackbot_img_id].append(user)
             return retval
 
-    def get_most_recent_stored_and_sent_images(self, user):
+    def get_most_recent_stored_and_sent_images(self, user, return_img_cv2=True, return_img_vector=True, return_detected_objects_dict=False):
         """
         Returns up to self.most_recent_images most recent img_msg and img_vector
         that were stored for user, and up to another self.most_recent_images
@@ -267,22 +302,31 @@ class SentMessagesDatabase(object):
         """
         with self.lock:
             # No image has been sent to this user
-            img_msgs = []
+            img_cv2s = []
             img_vectors = []
-            detected_objects_msgs = []
+            detected_objects_dicts = []
             if user in self.user_to_stored_local_img_ids:
                 for local_img_id in self.user_to_stored_local_img_ids[user][-self.most_recent_images:]: # self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: #
-                    img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
-                    img_msgs.append(img_msg)
+                    img_cv2, img_vector, detected_objects_dict = self.image_loader.get_images([local_img_id], return_img_cv2, return_img_vector, return_detected_objects_dict)[0]
+                    img_cv2s.append(img_cv2)
                     img_vectors.append(img_vector)
-                    detected_objects_msgs.append(detected_objects_msg)
+                    detected_objects_dicts.append(detected_objects_dict)
             if user in self.user_to_sent_local_img_ids:
                 for local_img_id in self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: # self.user_to_sent_local_img_ids[user][-self.most_recent_images:]: #
-                    img_msg, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id])[0]
-                    img_msgs.append(img_msg)
+                    img_cv2, img_vector, detected_objects_dict = self.image_loader.get_images([local_img_id], return_img_cv2, return_img_vector, return_detected_objects_dict)[0]
+                    img_cv2s.append(img_cv2)
                     img_vectors.append(img_vector)
-                    detected_objects_msgs.append(detected_objects_msg)
-            return img_msgs, img_vectors, detected_objects_msgs
+                    detected_objects_dicts.append(detected_objects_dict)
+
+            retval = []
+            if return_img_cv2:
+                retval.append(img_cv2s)
+            if return_img_vector:
+                retval.append(img_vectors)
+            if return_detected_objects_dict:
+                retval.append(detected_objects_dicts)
+
+            return tuple(retval)
 
     def get_img_vectors_and_reactions(self, user):
         """
@@ -299,7 +343,7 @@ class SentMessagesDatabase(object):
             for user_temp in self.slackbot_img_id_to_user_to_reaction[slackbot_img_id]:
                 if user_temp != user: continue
                 local_img_id = self.slackbot_img_id_to_local_img_id[slackbot_img_id]
-                img_vector = self.image_loader.get_images([local_img_id])[0][1]
+                img_vector = self.image_loader.get_images([local_img_id], return_img_vector=True)[0][1]
                 reaction = self.slackbot_img_id_to_user_to_reaction[slackbot_img_id][user]
                 img_vectors.append(img_vector)
                 reactions.append(reaction)
@@ -319,6 +363,9 @@ class SentMessagesDatabase(object):
             object_i = len(self.objects)
             self.objects.append(object_name)
             was_added = True
+            if self.objects_filepath is not None:
+                with open(self.objects_filepath, 'w') as f:
+                    json.dump(self.objects, f, indent=4)
 
         return object_i, was_added
 
@@ -364,7 +411,7 @@ class SentMessagesDatabase(object):
                 pickle.dump(self.get_pickleable_shallow_copy(), f)
 
     @staticmethod
-    def load(pkl_filepath, n_users=1, user_to_learning_condition={0:1}):
+    def load(pkl_filepath, objects_filepath=None, n_users=1, user_to_learning_condition={0:1}):
         """
         Attempts to load the SentMessagesDatabase pickle stored at pkl_filepath.
         If this fails, initializes a new SentMessagesDatabase and returns it.
@@ -378,4 +425,4 @@ class SentMessagesDatabase(object):
                 return sent_messages_database
         except Exception as e:
             rospy.logwarn("Could not load pickled SentMessagesDatabase, initializing new one %s" % e)
-            return SentMessagesDatabase(n_users=n_users, user_to_learning_condition=user_to_learning_condition)
+            return SentMessagesDatabase(objects_filepath=objects_filepath, n_users=n_users, user_to_learning_condition=user_to_learning_condition)

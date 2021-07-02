@@ -36,12 +36,15 @@ class SentMessagesDatabase(object):
         self.intro_message_user_id_ts = set()
         self.pre_study_message_user_id_ts = set()
 
-    def get_random_id(self, n_digits=10):
-        random_id = None
-        while random_id is None or random_id in self.random_ids:
-            random_id = random.randint(10**(n_digits-1),10**(n_digits)-1)
-        self.random_ids.add(random_id)
-        return random_id
+    def get_random_id(self, user_id, n_digits=10):
+        if user_id not in self.user_id_to_random_ids or len(self.user_id_to_random_ids[user_id]) == 0:
+            random_id = None
+            while random_id is None or random_id in self.random_ids:
+                random_id = random.randint(10**(n_digits-1),10**(n_digits)-1)
+            self.random_ids.add(random_id)
+            return random_id
+        else:
+            return self.user_id_to_random_ids[user_id][0]
 
     def add_random_id(self, user_id, random_id, survey_url):
         if user_id not in self.user_id_to_random_ids:
