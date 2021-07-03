@@ -221,7 +221,7 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
         "Thank you, I've added your feedback to my database. I'd like to understand, why did you rate the photo this way?",
         "Thank you, I'm starting to understand your preferences better. I want to learn more about why you made that choice."
         ]
-    else:
+    elif expression_of_curiosity_condition is not None:
         if reaction == 1:
             prefix = ""
         else:
@@ -238,17 +238,18 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
     else:
         emoji = ":x:"
 
-    message = message_list[random.randrange(len(message_list))]
-    response={
-        # "replace_original" : True,
-        "blocks":[
-            {
-        		"type": "section",
-        		"text": {
-        			"type": "mrkdwn",
-        			"text": "You chose "+ emoji
-        		}
-        	},
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "You chose "+ emoji
+            }
+        },
+    ]
+    if expression_of_curiosity_condition is not None:
+        message = message_list[random.randrange(len(message_list))]
+        blocks.append(
             {
                 "type": "input",
                 "label":{
@@ -261,7 +262,9 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
                     "action_id": "plain_input",
                     "multiline": True
                 },
-            },
+            }
+        )
+        blocks.append(
             {
                 "type": "actions",
         		"elements": [
@@ -277,7 +280,11 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
         			}
                 ]
             }
-        ]
+        )
+
+    response={
+        # "replace_original" : True,
+        "blocks" : blocks
     }
 
     if "message" in body and "blocks" in body["message"]:

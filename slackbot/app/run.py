@@ -558,11 +558,11 @@ class FlaskSlackbot(object):
                         print("Unknown order %s, setting it to 0" % repr(self.users_to_configuration[user_id]['order']))
                         expression_of_curiosity_condition = 0
             else:
-                # This message was sent before the last day message, so it is "no curiosity"
-                expression_of_curiosity_condition = 0
+                # This message was sent before the last day message, so it is "no followup"
+                expression_of_curiosity_condition = None
         else:
-            # "no curiosity" is standard if there are no details for the user
-            expression_of_curiosity_condition = 0
+            # "no followup" is standard if there are no details for the user
+            expression_of_curiosity_condition = None
 
         # Send the followup question
         response = slack_templates.action_button_check_mark_or_x(body, user_id, expression_of_curiosity_condition, reaction)
