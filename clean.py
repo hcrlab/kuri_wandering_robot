@@ -19,16 +19,21 @@ if __name__ == "__main__":
         ]
     else:
         csv_suffix = input("Is there any suffix you'd like to add to the csv files and sent_messages_database.pkl? (default is no suffix, press enter) ")
+        remove_log_and_images = input("Would you also like to remove the logs and images? (Y)es / (n)o ")
+        remove_log_and_images = (len(remove_log_and_images) > 0 and remove_log_and_images[0] == "Y")
+
         filepaths_to_delete = [
             "./slackbot/cfg/sent_messages_database%s.pkl" % csv_suffix,
-            "./slackbot/logs/log.txt",
             "./data/received_images%s.csv" % csv_suffix,
             "./data/sent_images%s.csv" % csv_suffix,
             "./data/reactions%s.csv" % csv_suffix,
             "./data/followups%s.csv" % csv_suffix,
             "./data/survey%s.csv" % csv_suffix,
-            "./data/images/*",
         ]
+
+        if remove_log_and_images:
+            filepaths_to_delete.append("./slackbot/logs/log.txt")
+            filepaths_to_delete.append("./data/images/*")
 
     commands = []
     for filepath in filepaths_to_delete:

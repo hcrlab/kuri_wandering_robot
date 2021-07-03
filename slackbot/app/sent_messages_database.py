@@ -73,6 +73,14 @@ class SentMessagesDatabase(object):
             self.user_id_to_scheduled_message_ts[user_id] = set()
         self.user_id_to_scheduled_message_ts[user_id].add(scheduled_ts)
 
+    def unsend_scheduled_messages_after(self, time_cutoff):
+        for user_id in self.user_id_to_scheduled_message_ts:
+            for scheduled_ts in list(self.user_id_to_scheduled_message_ts[user_id]):
+                if scheduled_ts >= time_cutoff:
+                    # The below if statement is likley redundant
+                    if scheduled_ts in self.user_id_to_scheduled_message_ts[user_id]:
+                        self.user_id_to_scheduled_message_ts[user_id].remove(scheduled_ts)
+
     def get_image_url(self, image_id):
         """
         Returns the image_url if it exists in self.image_id_to_url, else None.
