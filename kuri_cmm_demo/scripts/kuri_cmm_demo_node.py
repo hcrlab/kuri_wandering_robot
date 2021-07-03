@@ -12,6 +12,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from trajectory_msgs.msg import JointTrajectoryPoint
 # Python Default Libraries
 import base64
+import csv
 import cv2
 from enum import Enum
 import numpy as np
@@ -124,6 +125,17 @@ class CMMDemo(object):
         self.eyelid_controller_action = actionlib.SimpleActionClient('/eyelids_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
         self.eye_closed_position = 0.41
         self.eye_open_position = 0.0
+
+        # Each variable below contains the filename and the header row
+        self.csv_dir = "/mayfield/data/kuri_cmm_demo/"
+        self.stored_images_csv = ("stored_images.csv", ["Time", "Robot Image ID", "Robot User ID"])
+        self.sent_images_csv = ("sent_images.csv", ["Time", "Robot Image ID", "Robot User ID", "Predicted Probability", "Slackbot Image ID"])
+        for csv_filename, csv_header in [self.stored_images_csv, self.sent_images_csv]:
+            csv_filepath = os.path.join(self.csv_dir, csv_filename)
+            if not os.path.exists(csv_filepath):
+                with open(csv_filepath, "w") as f:
+                    csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    csv_writer.writerow(csv_header)
 
         # Parameters relevant to the battery
         self.battery_sub = rospy.Subscriber(
@@ -283,6 +295,7 @@ class CMMDemo(object):
             selected_images = []
             selected_images_debug_description = []
             selected_local_image_ids = []
+            selected_image_probabilities = []
             top_object_names = []
             for i in top_img_indices:
                 local_img_id = local_img_ids[i]
@@ -291,6 +304,8 @@ class CMMDemo(object):
                 content = bytearray(np.array(cv2.imencode('.jpg', img_cv2)[1]).tostring())
                 selected_images.append(base64.b64encode(content).decode('ascii'))
                 selected_local_image_ids.append(local_img_id)
+                probability = probabilities[i]
+                selected_image_probabilities.append(probability)
 
                 img_vector = img_vectors[i]
                 top_objects = np.argsort(img_vector)[-1:-n_objects-1:-1]
@@ -301,7 +316,6 @@ class CMMDemo(object):
                     top_object_names[-1].append(object_name)
 
                 if debug:
-                    probability = probabilities[i]
                     debug_description = "Kuri thinks your likelihood of liking this image is %.02f. " % probability
                     debug_description += "Kuri thinks the image has the following top-%d objects: " % n_objects
                     for j in top_objects:
@@ -325,6 +339,20 @@ class CMMDemo(object):
                 rospy.loginfo("Got image_ids %s" % slackbot_img_ids)
                 self.sent_messages_database.add_slackbot_image_id(selected_local_image_ids, slackbot_img_ids, user)
                 self.database_updated()
+
+                # Save it in the CSV
+                csv_filepath = os.path.join(self.csv_dir, self.sent_images_csv[0])
+                with open(csv_filepath, "a") as f:
+                    csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+                    for i in range(len(slackbot_img_ids)):
+                        try:
+                            slackbot_img_id = slackbot_img_ids[i]
+                            local_img_id = selected_local_image_ids[i]
+                            predicted_probability = selected_image_probabilities[i]
+                            csv_writer.writerow([time.time(), local_img_id, user, predicted_probability, slackbot_img_id])
+                        except Exception as e:
+                            rospy.loginfo("Error writing to sent_images_csv %s" % e)
+
             except Exception as e:
                 rospy.logwarn("Error communicating with Slackbot /send_images at URL %s." % self.slackbot_url)
                 if "res" in locals():
@@ -349,6 +377,13 @@ class CMMDemo(object):
         self.sent_messages_database.add_image(
             local_img_id, img_cv2, img_vector, detected_objects_msg, self.users_to_send_to_final)
         self.database_updated()
+
+        # Save it in the CSV
+        csv_filepath = os.path.join(self.csv_dir, self.stored_images_csv[0])
+        with open(csv_filepath, "a") as f:
+            csv_writer = csv.writer(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            for user in self.users_to_send_to_final:
+                csv_writer.writerow([time.time(), local_img_id, user])
 
     def subsampled_image(self, img_msg):
         """
