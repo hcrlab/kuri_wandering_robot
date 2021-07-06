@@ -8,7 +8,7 @@
   </node>
 
   <!-- Launch the overall CMM Demo node -->
-  <node pkg="kuri_cmm_demo" type="kuri_cmm_demo_node.py" name="kuri_cmm_demo_node" output="screen">
+  <node pkg="kuri_cmm_demo" type="kuri_cmm_demo_node.py" name="kuri_cmm_demo_node" output="screen" respawn="true">
     <param name='img_topic' value="/upward_looking_camera/compressed"/>
     <param name='object_detection_srv' value="object_detection"/>
     <param name='slackbot_url' value="http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194"/>

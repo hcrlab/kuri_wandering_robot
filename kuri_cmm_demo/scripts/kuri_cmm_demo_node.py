@@ -251,19 +251,33 @@ class CMMDemo(object):
             return False, object_similarities, image_similarities
         return False
 
-    def img_msg_to_img_vector(self, img_msg):
+    def img_msg_to_img_vector(self, img_msg, n_tries=3):
         """
         Takes in an img_msg, calls the object_detection service to get the
         detected objects, and computes the img_vector from the
         detected_objects_msg, and returns that.
         """
         # Get the detected objects in the image
-        rospy.wait_for_service(self.object_detection_srv_name)
-        with self.object_detection_srv_lock:
-            object_detection_response = self.object_detection_srv(img_msg)
-        if not object_detection_response.success:
-            rospy.logwarn("Object detection failed, not sending image")
-            return None
+        success = False
+        for try_i in range(n_tries):
+            try:
+                rospy.wait_for_service(self.object_detection_srv_name, timeout=5)
+                with self.object_detection_srv_lock:
+                    object_detection_response = self.object_detection_srv(img_msg)
+                if object_detection_response.success:
+                    success = True
+                    break
+            except Exception as e:
+                rospy.logwarn("Failed to contact object_detection_srv, try %d/%d" % (try_i+1, n_tries))
+                if "object_detection_response" in locals():
+                    rospy.logwarn("object_detection_response %s." % object_detection_response)
+                rospy.logwarn(traceback.format_exc())
+                rospy.logwarn("Error %s." % e)
+
+        if not success:
+            rospy.logwarn("Failed to detect objects. Returning from img_msg_to_img_vector")
+            return None, None
+
         detected_objects_msg = object_detection_response.detected_objects
 
         # Determine whether to send the image
@@ -370,6 +384,9 @@ class CMMDemo(object):
         """
         with self.to_send_policy_lock:
             img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
+        if img_vector is None:
+            rospy.logwarn("Failed to get img_vector. Returning from store_image")
+            return
 
         rospy.loginfo("Store image! For users %s" % self.users_to_send_to_final)
         img_cv2 = cv2.imdecode(np.fromstring(img_msg.data, np.uint8), cv2.IMREAD_COLOR)
@@ -397,6 +414,9 @@ class CMMDemo(object):
         rospy.logdebug("Got subsampled image!")
         with self.to_send_policy_lock:
             img_vector, detected_objects_msg = self.img_msg_to_img_vector(img_msg)
+            if img_vector is None:
+                rospy.logwarn("Failed to get img_vector. Returning from subsampled_image")
+                return
             # Determine whether to send the image
             to_send = self.to_send_policy.to_send_policy(img_vector)
             rospy.loginfo("to_send_policy output %s" % to_send)
