@@ -436,6 +436,13 @@ class SentMessagesDatabase(object):
         try:
             with open(pkl_filepath, "rb") as f:
                 sent_messages_database = pickle.load(f)
+                # If the n_users changed, we have to initialize the additional users
+                num_new_users = n_users - sent_messages_database.n_users
+                if num_new_users > 0:
+                    sent_messages_database.n_users = n_users
+                    for _ in range(num_new_users):
+                        print("Adding a new user to sent_messages_database")
+                        sent_messages_database.time_of_last_stored_image_per_user.append(time.time())
                 print("sent_messages_database.slackbot_img_id_to_local_img_id", sent_messages_database.slackbot_img_id_to_local_img_id)
                 sent_messages_database.lock = threading.Lock()
                 sent_messages_database.image_loader = ImageLoader(cache_size=int(2.5*sent_messages_database.most_recent_images*sent_messages_database.n_users))
