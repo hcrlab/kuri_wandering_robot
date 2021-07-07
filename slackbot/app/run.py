@@ -117,22 +117,31 @@ class FlaskSlackbot(object):
         # Delete all previously scheduled messages that should post at >= time_cutoff
         buffer_time = 360 # According to the Slackbot API, it works for deleting mesages that would be sent 60 secs into the future. However, in our experience, the number is much higher, somewhre between 220-360
         time_cutoff = time.time() + buffer_time
-        response = self.slack_app.client.chat_scheduledMessages_list()
-        if response["ok"]:
-            for scheduled_message in response['scheduled_messages']:
-                id = scheduled_message['id']
-                channel_id = scheduled_message['channel_id']
-                ts = scheduled_message['post_at']
-                # If the scheudled message is more than buffer_time in the
-                # future, delete it
-                if ts >= time_cutoff:
-                    delete_response = self.slack_app.client.chat_deleteScheduledMessage(channel=channel_id, scheduled_message_id=id)
-                    if delete_response["ok"]:
-                        logging.info("%s Deleted scheduled message with ts %s: %s" % (time.time(), ts, delete_response))
+        next_cursor = ''
+        done = False
+        while not done:
+            response = self.slack_app.client.chat_scheduledMessages_list(cursor=next_cursor)
+            if response["ok"]:
+                for scheduled_message in response['scheduled_messages']:
+                    id = scheduled_message['id']
+                    channel_id = scheduled_message['channel_id']
+                    ts = scheduled_message['post_at']
+                    # If the scheudled message is more than buffer_time in the
+                    # future, delete it
+                    if ts >= time_cutoff:
+                        delete_response = self.slack_app.client.chat_deleteScheduledMessage(channel=channel_id, scheduled_message_id=id)
+                        if delete_response["ok"]:
+                            logging.info("%s Deleted scheduled message with ts %s channel_id %s message_id %s: %s" % (time.time(), ts, channel_id, id, delete_response))
+                        else:
+                            logging.info("%s Failed to delete scheduled message (%s, %s, %s). %s" % (time.time(), id, channel_id, ts, delete_response))
+                    if 'next_cursor' in response['response_metadata'] and len(response['response_metadata']['next_cursor']) > 0:
+                        done = False
+                        next_cursor = response['response_metadata']['next_cursor']
                     else:
-                        logging.info("%s Failed to delete scheduled message (%s, %s, %s). %s" % (time.time(), id, channel_id, ts, delete_response))
-        else:
-            logging.info("Error getting previously scheduled messages. Not deleting any previously scheduled messages. %s" % response)
+                        done = True
+            else:
+                logging.info("Error getting previously scheduled messages. Not deleting any previously scheduled messages. %s" % response)
+                done = True
         self.sent_messages_database.unsend_scheduled_messages_after(time_cutoff)
 
         for user_id in self.users_to_configuration:
