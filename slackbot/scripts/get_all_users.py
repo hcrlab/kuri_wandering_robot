@@ -14,9 +14,6 @@ slack_app = App(
 
 desired_users = [
     # ("First Name", "Last Name", "email@email.com"),
-    ("Amal", "Nanavati", "amaln@uw.edu"),
-    ("Chris", "Mavrogiannis", "cmavro@cs.washington.edu"),
-    ("Nick", "Walker", "nswalker@uw.edu"),
 ]
 
 # Request all the users

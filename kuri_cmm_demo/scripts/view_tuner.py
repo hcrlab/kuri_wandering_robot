@@ -15,10 +15,19 @@ from scipy.ndimage.measurements import label
 import time
 
 class ViewTuner(object):
+    """
+    Uses an approach from https://www.researchgate.net/profile/Aaron-Steinfeld/publication/220939264_An_assisted_photography_method_for_street_scenes/links/02e7e51e569d3720f6000000/An-assisted-photography-method-for-street-scenes.pdf
+    to adjust the robot head's pan/tilt to center the region of max saliency. When
+    the view_tuner is first initialized with an image, it initializes optical flow
+    and computes the center of the region of greatest saliency. For every subsequent
+    image, it uses optical flow to deteming the new center of the region of max saliency,
+    and moves the head to center that point. When it is deinitialized, it centers the
+    head.
+    """
     def __init__(self, head_state_topic, secs_of_stationary_before_returning=10,
         eps=0.05):
         """
-        Uses an approach from https://www.researchgate.net/profile/Aaron-Steinfeld/publication/220939264_An_assisted_photography_method_for_street_scenes/links/02e7e51e569d3720f6000000/An-assisted-photography-method-for-street-scenes.pdf
+        Initializes an instance of the ViewTuner class
         """
         # Initialize the image processing components
         self.saliency = cv2.saliency.StaticSaliencySpectralResidual_create()

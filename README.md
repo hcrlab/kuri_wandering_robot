@@ -6,28 +6,21 @@ This readme provides an overview of the demo and a getting started guide.
 
 ## Overview
 
-The below diagram describes the three components of the demo, and the way in which curiousity manifests in each component.
+The below diagram provides a visual overview of the architecture of the system.
 
-![CMM Demo Layers of Curiosity](./docs/cmm_demo_layers_of_curiosity.jpg)
-
-The below diagram visually describes the architecture of our current system.
-
-![CMM Demo Current ROS Nodes](./docs/cmm_demo_current_ros_nodes.jpg)
-
-The below diagram visually describes the architecture of our target system.
-
-![CMM Demo Target ROS Nodes](./docs/cmm_demo_target_ros_nodes.jpg)
+![CMM Demo ROS Nodes](./docs/cmm_demo_ros_nodes.jpg)
 
 ## Getting Started
 
 ### Hardware Requirements
 - A Kuri robot. The decision-making and and interaction components are robot agnostic (as of now), but the navigation component is robot-specific.
 - A remote computer, configured to enable a Flask app to run on it on ports 8193 and 8194 (instructions under "Slackbot" below). This computer should always be on, to recieve user responses to Slack messages.
-- [TBD] A remote computer (could be the same as above) to run `object_detection_db.py` as a ROS node. Currently, we run this node on-board the robot, but as we further develop this node (and it needs to locally store images and detected objects), we envision running it on a remote computer.
 
 ### Running Code On-Board the Robot: Dockerfiles
 
 Both the `local_coverage_navigation` and the `kuri_cmm_demo` directories use Docker containers to isolate ROS versions and ensure the appropriate dependencies are installed. The appropriate dockerfiles are included in the directories. Please refer to our [wiki on using Docker with Kuri](https://github.com/hcrlab/wiki/wiki/Robots:-Kuri:-Docker) for more details.
+
+NOTE: For running the overall demo, use the Dockerfile in `kuri_cmm_demo`. The Dockerfile in `local_coverage_navigation` should chiefly be used to run the local navigator in isolation.
 
 ### Slackbot
 
@@ -37,6 +30,10 @@ Refer to the [readme in the slackbot directory](./slackbot/README.md). This code
 
 Refer to the [readme in the local_coverage_navigation directory](./local_coverage_navigation/README.md).
 
-### Decision Making
+### Kuri CMM Demo
 
-Refer to the [readme in the kuri_cmm_demo directory](./kuri_cmm_demo/README.md).
+This node is the executive node; it brings together the slackbot, navigation, and decision-making aspects of the demo. Refer to the [readme in the kuri_cmm_demo directory](./kuri_cmm_demo/README.md).
+
+### clean.py
+
+Both the Slackbot and the code running on-board the robot store data in respective `sent_messages_database.pkl` files, as well as in CSVs and as stored image files. The downside of this is that if you change the configuration file, or other aspects of the setup, then those cached files don't update and the system does not work as expected. To alleviate this, anytime you want to re-run the server and/or robot from scratch, run `python3 clean.py`. The prompts on-screen will walk you through how to delete files and have you verify the commands before running them.

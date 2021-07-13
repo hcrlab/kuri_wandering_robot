@@ -1,7 +1,39 @@
-users_list: [""] # A list of Slack user IDs, outputted by ../scripts.get_all_users.py
-users_to_condition: {"":[0,1]} # A dictionary of the same length as users_list, where the keys are the user_ids and the values are a list of two integers, the first referring to the "Expressions of Curiosity" factor and the second referring to the "Learning" factor
-# See https://docs.google.com/document/d/1D1hoInDg7urD7bdEWlJYECyfAjihmlJEwYAwjEWbbMM/edit
-# for instructions on setting up a Slackbot and getting its tokens/secrets.
-slack_bot_token: ""
-slack_user_token: ""
-slack_signing_secret: ""
+TEST_USER_1:
+  daily_schedule:
+  - images_sent_timestamps:
+    - 1625245200.0
+    - 1625252400.0
+    - 1625259600.0
+    - 1625266800.0
+    intro_message_timestamp: 1625241600.0
+    survey_timestamps:
+    - 1625256000.0
+    - 1625269500.0
+  learning_condition: 1
+  order: 0
+  pre_study_message_timestamp: 1625183100.0
+TEST_USER_2:
+  daily_schedule:
+  - images_sent_timestamps:
+    - 1625520420
+    - 1625520450
+    - 1625520510
+    - 1625520540
+    intro_message_timestamp: 1625520390
+    survey_timestamps:
+    - 1625520480
+    - 1625520570
+  learning_condition: 1
+  order: 1
+  pre_study_message_timestamp: 1625520360
+TEST_USER_3:
+  learning_condition: 1
+  order: 1
+low_battery_savior_user_id: TEST_USER_0
+slack_bot_token: TEST_SLACK_BOT_TOKEN
+slack_signing_secret: TEST_SLACK_SIGNING_SECRET
+slack_user_token: TEST_SLACK_USER_TOKEN
+users_list:
+- TEST_USER_1
+- TEST_USER_2
+- TEST_USER_3

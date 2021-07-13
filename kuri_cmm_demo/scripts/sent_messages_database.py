@@ -10,7 +10,15 @@ import threading
 import time
 
 class ImageLoader(object):
+    """
+    The ImageLoader class stores copies of images, vectors, and detected_objects
+    on the robot's harddrive. It then loads and caches them as necessary.
+    """
+
     def __init__(self, cache_size=300, base_dir="/mayfield/data/kuri_cmm_demo/images"):
+        """
+        Initialize the class
+        """
         self.base_dir = base_dir
         self.cache_size = cache_size
 
@@ -22,6 +30,9 @@ class ImageLoader(object):
 
     @staticmethod
     def detected_objects_msg_to_dict(detected_objects_msg):
+        """
+        Convert a ROS DetectedObjects msg to a dictionary to save as a JSON
+        """
         return {
             "header" : {
                 "seq" : detected_objects_msg.header.seq,
@@ -49,6 +60,9 @@ class ImageLoader(object):
         }
 
     def add_to_cache(self, img_id, val):
+        """
+        Adds an image to the cache
+        """
         was_already_in_cache = (img_id in self.cache)
         self.cache[img_id] = val
         if not was_already_in_cache:
@@ -191,6 +205,9 @@ class SentMessagesDatabase(object):
                 self.time_of_last_stored_image_per_user[user] = time.time()
 
     def get_image(self, local_img_id, return_img_cv2=False, return_img_vector=True, return_detected_objects_dict=False):
+        """
+        Get a single image
+        """
         img_cv2, img_vector, detected_objects_msg = self.image_loader.get_images([local_img_id], return_img_cv2, return_img_vector, return_detected_objects_dict)[0]
         retval = []
         if return_img_cv2:
@@ -202,6 +219,9 @@ class SentMessagesDatabase(object):
         return tuple(retval)
 
     def get_time_of_last_stored_image(self, user):
+        """
+        Gets the time of the last stored image
+        """
         with self.lock:
             return self.time_of_last_stored_image_per_user[user]
 
@@ -349,9 +369,6 @@ class SentMessagesDatabase(object):
         """
         Returns two lists: (1) a list of img_vectors that have been sent to user
         and they have responded to; (2) an equally-long list of user's responses.
-
-        NOTE: this can be made more efficient by just storing a map from users
-        to slackbot_img_ids to reactions in add_user_reaction
         """
         img_vectors = []
         reactions = []

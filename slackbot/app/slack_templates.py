@@ -3,9 +3,9 @@ import pprint
 import random
 
 """
-Types of messages to expect:
+Types of messages:
     At the beginning of the study:
-        X Pre-study message introducing the task
+        X Pre-study message introducing the user study
     At the beginning of the day:
         X Intro message -- sent at 9AM daily
         X    Has a different “fun thing” every day
@@ -18,11 +18,9 @@ Types of messages to expect:
         X Update to the block when the “confirm” followup button is clicked
         X Ending message (e.g., “I’ll send you more messages in 2 hours”)
         X ~5ish variations
-    At the end of the day:
+    At the end of each day:
         X Sending the survey, a link to the qualtrics
-        X Ideally, pass a random user ID via the Qualtrics URL (Should be easy :))
-    Final message for final survey
-        Assuming that final survey is different from end of day survey
+        X Pass a random user ID via the Qualtrics URL
 """
 def pre_study_template(user_id):
     payload = {
@@ -71,9 +69,6 @@ def pre_study_template(user_id):
     return payload
 
 def intro_template(user_id, day):
-    #The intro message accepts an int that describes what day the participant is on
-    #Expected values: 0-2
-    #User_id is also needed to post to the correct channel
     if day < 0 or day > 3:
         new_day = abs(day) % 3
         print("intro_template got incorrect day %d, setting to %d" % (day, new_day))
@@ -96,13 +91,6 @@ def intro_template(user_id, day):
         "username": "kuribot",
         "text": "Hi, it's Kuribot! I'm going to be starting soon. Get ready for some images.",
         "blocks": [
-        # {
-        #     "type": "section",
-        #     "text": {
-        #         "type": "mrkdwn",
-        #         "text": "Thanks for getting started, I'll send you a message soon after I get things set up."
-        #     }
-        # },
         {
             "type": "section",
             "text": {
@@ -139,11 +127,6 @@ def post_images_intro(user_id, n_images):
     return payload
 
 def post_image(user_id, image_url, image_description, message_i, n_images, objects):
-    #This posts an image given:
-    #the user ID: user_id
-    #an existing link to that image: public_link
-    #An image image_description
-    #objects is a list where the top 5 are objects in the picture
     if image_description is None:
         image_description = "Kuri shared this picture with you!"
 
@@ -203,10 +186,6 @@ def post_image(user_id, image_url, image_description, message_i, n_images, objec
 
 
 def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_condition, reaction):
-    #user_id is the users_id
-    #which user study condition: condition. Expected values are 0 (description), 1 (follow up 1), and 2 (follow up 2)
-    #reaction is the type of reaction from the button they clicked. 1 is check mark, 0 is X
-    print("expression_of_curiosity_condition", expression_of_curiosity_condition, repr(expression_of_curiosity_condition), "reaction", reaction)
     if expression_of_curiosity_condition == 0:
         message_list = [
         "Thank you, I'll use your response to choose better photos. Next, please describe the photo.",
@@ -283,7 +262,6 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
         )
 
     response={
-        # "replace_original" : True,
         "blocks" : blocks
     }
 
@@ -304,9 +282,6 @@ def action_button_check_mark_or_x(body, user_id, expression_of_curiosity_conditi
     return response
 
 def confirm_input_template(body, user_id, question, answer):
-    #user_input is recovered at the previous step, from something like
-        #body["message"]["blocks"][0]
-    #user_id is the user's id for correct placement
     response = {
         "blocks": [
         {
@@ -344,13 +319,6 @@ def confirm_input_template(body, user_id, question, answer):
     return response
 
 def survey_template(user_id, random_id, is_last_day, survey_i, order):
-    #The study URL will need to be changed for the final version, but here's the temp one for testing
-    #random_id will be generated beforehand and added to a dictionary to keep track of who got what random_id
-
-    # if day < 0 or day > 2:
-    #     new_day = abs(day) % 3
-    #     print("survey_template got incorrect day %d, setting to %d" % (day, new_day))
-    #     day = new_day
     if survey_i < 0 or survey_i > 1:
         new_survey_i = abs(survey_i) % 2
         print("survey_template got incorrect survey_i %d, setting to %d" % (survey_i, new_survey_i))

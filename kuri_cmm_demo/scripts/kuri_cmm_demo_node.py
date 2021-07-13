@@ -44,6 +44,11 @@ class CMMDemoState(Enum):
     During TAKE_PICTURE, the robot waits some amount of time to ensure the
     picture is not blurry and then takes the picture. Then, the state is
     changed to NORMAL.
+
+    During CHARGING, the robot's eyes are closed and it is charging. The robot
+    transitions from NORMAL to CHARGING if its battery is below a threshold and
+    it is on the charger. It transitions from CHARGING to NORMAL if it's battery
+    is above a threshold or it is off the charger.
     """
     NORMAL = 1
     INITIALIZE_TUNER = 2
@@ -93,14 +98,7 @@ class CMMDemo(object):
             rule='n_per_sec', rule_config={'n':1},
         )
 
-        # # Parameters relevant to the camera
-        # self.use_madmux = use_madmux
-        # if self.use_madmux:
-        #     import madmux
-        #     self.bridge = CvBridge()
-        #     self.madmux_sub = madmux.Stream("/var/run/madmux/ch3.sock")
-        #     self.madmux_sub.register_cb(self.img_callback)
-        # else:
+        # Parameters relevant to the camera
         self.img_sub = rospy.Subscriber(
             img_topic, CompressedImage, self.img_callback, queue_size=1)
         self.latest_image = None
@@ -408,8 +406,6 @@ class CMMDemo(object):
         object_detection service to return detected objects. Then, it determines
         whether to send the image. If it decides to send it, it calls the
         Slackbot's send_image endpoint
-
-        TODO: if the state changes from NORMAL, return.
         """
         rospy.logdebug("Got subsampled image!")
         with self.to_send_policy_lock:
@@ -485,7 +481,7 @@ class CMMDemo(object):
 
     def close_eyes(self, duration_secs=0.2):
         """
-        Open the robot's eyes
+        Close the robot's eyes
         """
         duration = rospy.Duration.from_sec(duration_secs)
         goal = FollowJointTrajectoryGoal()
@@ -507,22 +503,10 @@ class CMMDemo(object):
 
     def img_callback(self, data):
         """
-        If this image gets subsampled, run self.subsampled_image(img_msg) (in a
-        separate thread to avoid dropping messages on the img stream). Else,
-        return.
-
-        TODO: See how Madmux does queuing, and if it doesn't then implement a
-        separate thread that loops at a fixed ros Rate and gets the most recent
-        madmux images
+        Store the latest image, for use by the state_machine_control_loop
         """
         if not self.has_loaded: return
 
-        # if self.use_madmux:
-        #     # Read the bytes as a jpeg image
-        #     data = np.fromstring(data, np.uint8)
-        #     decoded = cv2.imdecode(data, cv2.CV_LOAD_IMAGE_COLOR)
-        #     img_msg = self.bridge.cv2_to_compressed_imgmsg(decoded)
-        # else:
         img_msg = data
 
         with self.latest_image_lock:
@@ -531,7 +515,10 @@ class CMMDemo(object):
 
     def state_machine_control_loop(self, rate_hz=2):
         """
-        rate is in Hz
+        The control loop for the state machine. All of the state machine logic
+        is handled in this function and the functions it calls.
+
+        See the README of the kuri_cmm_demo directory for more details.
         """
         rate = rospy.Rate(rate_hz)
         while not rospy.is_shutdown():
@@ -561,6 +548,10 @@ class CMMDemo(object):
                                 else:
                                     continue
                             if self.subsampling_policy.subsample(img_msg): # This image was selected
+                                # NOTE: initially we ran this in a separate
+                                # thread, but that gave rise to race conditions.
+                                # Because this function is not too slow, we
+                                # ran it in the sme thread instead.
                                 self.subsampled_image(img_msg)
                                 # thread = threading.Thread(
                                 #     target=self.subsampled_image,

@@ -25,7 +25,7 @@ def load_images(folder_path):
 if __name__ == "__main__":
     # NEED TO CHANGE
     folder_path = "/home/ubuntu/stored_images/" # "/Users/amaln/Documents/HCRLab/kuri_photography_cmm_demo/20210419_Kuri_Moving_Around_UW_CSE2/original_subsampling_policy_1/" #
-    server_url = "http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:3001"
+    server_url = "http://ec2-52-33-153-87.us-west-2.compute.amazonaws.com:8194"
 
     n_images = 5 # Num images to send
 

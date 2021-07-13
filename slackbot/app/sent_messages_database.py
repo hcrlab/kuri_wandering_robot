@@ -6,8 +6,8 @@ import time
 
 class SentMessagesDatabase(object):
     """
-    Keeps track of image_id, the corresponding (user_id, timestamp)s and the
-    users' reactions.
+    Keeps track of image_id, the corresponding (user_id, timestamp)s, the
+    users' reactions, and the users' followups.
     """
     def __init__(self):
         """
@@ -37,6 +37,10 @@ class SentMessagesDatabase(object):
         self.pre_study_message_user_id_ts = set()
 
     def get_random_id(self, user_id, n_digits=10):
+        """
+        If the user already has a random ID, return it. Else, get a new random_id
+        for the user.
+        """
         if user_id not in self.user_id_to_random_ids or len(self.user_id_to_random_ids[user_id]) == 0:
             random_id = None
             while random_id is None or random_id in self.random_ids:
@@ -47,6 +51,10 @@ class SentMessagesDatabase(object):
             return self.user_id_to_random_ids[user_id][0]
 
     def add_random_id(self, user_id, random_id, survey_url):
+        """
+        Add a (random ID, user_id) paid to the database, so the random ID does
+        not get repeated for another user.
+        """
         if user_id not in self.user_id_to_random_ids:
             self.user_id_to_random_ids[user_id] = []
             self.user_id_to_survey_urls[user_id] = []
@@ -54,26 +62,45 @@ class SentMessagesDatabase(object):
         self.user_id_to_survey_urls[user_id].append(survey_url)
 
     def add_intro_message(self, user_id, ts):
+        """
+        Store the fact that an intro message was sent to user_id at ts.
+        """
         self.intro_message_user_id_ts.add((user_id, ts))
 
     def add_pre_study_message(self, user_id, ts):
+        """
+        Store the fact that the pre-study message was sent to user_id at ts.
+        """
         self.pre_study_message_user_id_ts.add((user_id, ts))
 
     def add_sent_survey(self, user_id, ts, survey_url):
+        """
+        Store the fact that survey_url was sent to user_id at ts.
+        """
         self.survey_url_to_user_id_ts[survey_url] = (user_id, ts)
         self.user_id_ts_to_survey_url[(user_id, ts)] = survey_url
 
     def was_scheduled_message_sent(self, user_id, scheduled_ts):
+        """
+        Return whether or not the scheduled message to user_id at scheduled_ts
+        has been sent to the Slack server.
+        """
         if user_id not in self.user_id_to_scheduled_message_ts or scheduled_ts not in self.user_id_to_scheduled_message_ts[user_id]:
             return False
         return True
 
     def scheduled_message_was_sent(self, user_id, scheduled_ts):
+        """
+        Store the fact that a scheduled message was sent.
+        """
         if user_id not in self.user_id_to_scheduled_message_ts:
             self.user_id_to_scheduled_message_ts[user_id] = set()
         self.user_id_to_scheduled_message_ts[user_id].add(scheduled_ts)
 
     def unsend_scheduled_messages_after(self, time_cutoff):
+        """
+        Store the fact that a scheduled message was unsent.
+        """
         for user_id in self.user_id_to_scheduled_message_ts:
             for scheduled_ts in list(self.user_id_to_scheduled_message_ts[user_id]):
                 if scheduled_ts >= time_cutoff:

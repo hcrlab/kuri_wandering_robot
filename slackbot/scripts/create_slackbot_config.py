@@ -24,6 +24,8 @@ class User(object):
         remains the same as above, but each message is sent message_interval seconds
         apart.
           - message_interval is not None, first_message_ts must be a epoch timestamp
+
+        If first_message_ts is None, do not have any scheduled times for this user
         """
         self.user_id = user_id
         self.order = order
@@ -32,7 +34,8 @@ class User(object):
         self.n_days = n_days
         self.message_interval = message_interval
 
-        self.initialize_times()
+        if self.first_message_ts is not None:
+            self.initialize_times()
 
     def initialize_times(self):
         """
@@ -93,30 +96,41 @@ class User(object):
                 })
 
     def to_dict(self):
-        return {
-            self.user_id : {
-                "order" : self.order,
-                "learning_condition" : self.learning_condition,
-                "pre_study_message_timestamp" : self.pre_study_message_timestamp,
-                "daily_schedule" : self.daily_schedule,
+        """
+        Convert the User to a dict to be written to yaml
+        """
+        if self.first_message_ts is not None:
+            return {
+                self.user_id : {
+                    "order" : self.order,
+                    "learning_condition" : self.learning_condition,
+                    "pre_study_message_timestamp" : self.pre_study_message_timestamp,
+                    "daily_schedule" : self.daily_schedule,
+                }
             }
-        }
+        else:
+            return {
+                self.user_id : {
+                    "order" : self.order,
+                    "learning_condition" : self.learning_condition,
+                }
+            }
 
 if __name__ == "__main__":
     ############################################################################
     # Parameters To Set
     ############################################################################
-    slack_bot_token = ""
-    slack_user_token = ""
-    slack_signing_secret = ""
+    slack_bot_token = "TEST_SLACK_BOT_TOKEN"
+    slack_user_token = "TEST_SLACK_USER_TOKEN"
+    slack_signing_secret = "TEST_SLACK_SIGNING_SECRET"
 
-    low_battery_savior_user_id = ""
+    low_battery_savior_user_id = "TEST_USER_0"
 
     n_days = 1
     users = [
-        User("", 0, 1, "2021-07-01", n_days=n_days),
-        User("", 1, 1, "2021-07-01", n_days=n_days),
-        User("", 1, 1, "2021-07-01", n_days=n_days),
+        User("TEST_USER_1", 0, 1, "2021-07-01", n_days=n_days),
+        User("TEST_USER_2", 1, 1, 1625520360, n_days=n_days, message_interval=30),
+        User("TEST_USER_3", 1, 1, None),
     ]
 
     ############################################################################

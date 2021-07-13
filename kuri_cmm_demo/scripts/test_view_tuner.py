@@ -46,6 +46,9 @@ class TestViewTuner(object):
         self.has_loaded = True
 
     def tune_img_callback(self, tune_img_msg):
+        """
+        When this callback receives a message, it initializes the view tuner.
+        """
         rospy.loginfo("Got tune_img_msg!")
         if not self.has_loaded: return
         with self.view_tuner_lock:
@@ -63,6 +66,11 @@ class TestViewTuner(object):
             self.img_pub_connected_components.publish(connected_components_msg)
 
     def img_callback(self, img_msg):
+        """
+        When this callback receives a message, if the robot is in the process of
+        view tuning, it passes the image onto the view tuner, else it stores
+        the most recent image.
+        """
         rospy.loginfo("Got img_msg!")
         if not self.has_loaded: return
         with self.most_recent_img_msg_lock:
@@ -73,7 +81,7 @@ class TestViewTuner(object):
             rospy.loginfo("about to call view_tuner tune_image")
             with self.view_tuner_lock:
                 is_done, img_annotated = self.view_tuner.tune_image(img_msg, return_annotated_img=True)
-            
+
             if img_annotated is not None:
                 img_msg_annotated = self.bridge.cv2_to_imgmsg(img_annotated, encoding="passthrough")
                 img_msg_annotated.step = int(img_msg_annotated.step)
