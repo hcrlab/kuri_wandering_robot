@@ -37,7 +37,7 @@ print("Testing send_images to user %s..." % user_to_send_to, end='')
 images_to_send = []
 for image_content in image_contents:
     images_to_send.append(base64.encodebytes(image_content).decode('ascii'))
-dict_to_send = {'images':images_to_send, 'user':user_to_send_to}
+dict_to_send = {'images':images_to_send, 'user':user_to_send_to, 'objects': [['test_object_%d_%d' % (i, j) for i in range(5)] for j in range(len(images_to_send))]}
 res = requests.post(server_url+'/send_images', json=dict_to_send)
 image_ids = res.json()["image_ids"]
 assert(len(image_filepaths) == len(image_ids))
