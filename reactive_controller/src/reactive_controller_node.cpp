@@ -31,7 +31,7 @@
 #include <tf2_ros/transform_listener.h>
 
 int main(int argc, char** argv){
-  ros::init(argc, argv, "local_coverage_navigator");
+  ros::init(argc, argv, "reactive_controller");
   tf2_ros::Buffer buffer(ros::Duration(10));
   tf2_ros::TransformListener tf(buffer);
 

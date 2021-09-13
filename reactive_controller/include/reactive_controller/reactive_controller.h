@@ -34,8 +34,7 @@
 *
 * Author: Eitan Marder-Eppstein
 *********************************************************************/
-#ifndef NAV_MOVE_BASE_ACTION_H_
-#define NAV_MOVE_BASE_ACTION_H_
+#pragma once
 
 #include <vector>
 #include <string>
@@ -111,12 +110,6 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
        */
       bool clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp);
 
-      /**
-       * @brief  Clears obstacles within a window around the robot
-       * @param size_x The x size of the window
-       * @param size_y The y size of the window
-       */
-      void clearCostmapWindows(double size_x, double size_y);
 
       /**
        * @brief  Publishes a velocity command of zero to the base
@@ -124,24 +117,21 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
       void publishZeroVelocity();
 
       /**
-       * @brief  Reset the state of the move_base action and send a zero velocity command to the base
+       * @brief  Reset the state of the action and send a zero velocity command to the base
        */
       void resetState();
 
-    void testThread();
 
       void planThread();
 
       int executeCb(const reactive_controller::NavigateGoalConstPtr& move_base_goal);
 
 
-      bool isQuaternionValid(const geometry_msgs::Quaternion& q);
 
       bool getRobotPose(geometry_msgs::PoseStamped& global_pose, costmap_2d::Costmap2DROS* costmap);
 
       double distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2);
 
-      geometry_msgs::PoseStamped goalToGlobalFrame(const geometry_msgs::PoseStamped& goal_pose_msg);
 
       tf2_ros::Buffer& tf_;
 
@@ -153,7 +143,6 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
 
       unsigned int recovery_index_;
 
-      geometry_msgs::PoseStamped global_pose_;
       double planner_frequency_, controller_frequency_, inscribed_radius_, circumscribed_radius_;
       double planner_patience_, controller_patience_;
       int32_t max_planning_retries_;
@@ -187,13 +176,10 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
       boost::condition_variable_any planner_cond_;
       geometry_msgs::PoseStamped planner_goal_;
       boost::thread* planner_thread_;
-      boost::thread* test_thread;
-      bool run_test_thread_;
 
       double current_angle;
       double cost_threshold;
 
-      bool setup_, p_freq_change_, c_freq_change_;
       bool new_global_plan_;
   };
 
@@ -286,4 +272,3 @@ inline void bresenham2D(ActionType& at, unsigned int abs_da, unsigned int abs_db
   at(offset);
 }
 };
-#endif

@@ -57,7 +57,7 @@ namespace reactive_controller {
    controller_costmap_ros_(NULL),
     blp_loader_("nav_core", "nav_core::BaseLocalPlanner"),
     planner_plan_(NULL), latest_plan_(NULL), controller_plan_(NULL),
-    runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
+    runPlanner_(false), new_global_plan_(false) {
 
     ros::NodeHandle private_nh("~");
     as_ = new NavigateActionServer(private_nh, "navigate", boost::bind(&ReactiveController::executeCb, this, _1), false);
@@ -96,7 +96,7 @@ namespace reactive_controller {
     vel_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
     current_goal_pub_ = private_nh.advertise<geometry_msgs::PoseStamped>("current_goal", 0 );
 
-    ros::NodeHandle action_nh("move_base");
+    ros::NodeHandle action_nh("reactive_controller");
 
     //we'll assume the radius of the robot to be consistent with what's specified for the costmaps
     private_nh.param("local_costmap/inscribed_radius", inscribed_radius_, 0.325);
@@ -131,7 +131,7 @@ namespace reactive_controller {
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("move_base","Stopping costmaps initially");
+      ROS_DEBUG_NAMED("reactive_controller","Stopping costmaps initially");
       controller_costmap_ros_->stop();
     }
 
@@ -146,37 +146,6 @@ namespace reactive_controller {
     ROS_ERROR("Server started");
   }
 
-
-  void ReactiveController::clearCostmapWindows(double size_x, double size_y){
-    geometry_msgs::PoseStamped global_pose;
-
-    //clear the controller's costmap
-    getRobotPose(global_pose, controller_costmap_ros_);
-
-    std::vector<geometry_msgs::Point> clear_poly;
-    clear_poly.clear();
-    double x = global_pose.pose.position.x;
-    double y = global_pose.pose.position.y;
-    geometry_msgs::Point pt;
-
-    pt.x = x - size_x / 2;
-    pt.y = y - size_y / 2;
-    clear_poly.push_back(pt);
-
-    pt.x = x + size_x / 2;
-    pt.y = y - size_y / 2;
-    clear_poly.push_back(pt);
-
-    pt.x = x + size_x / 2;
-    pt.y = y + size_y / 2;
-    clear_poly.push_back(pt);
-
-    pt.x = x - size_x / 2;
-    pt.y = y + size_y / 2;
-    clear_poly.push_back(pt);
-
-    controller_costmap_ros_->getCostmap()->setConvexPolygonCost(clear_poly, costmap_2d::FREE_SPACE);
-  }
 
   bool ReactiveController::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
     //clear the costmaps
@@ -213,37 +182,6 @@ namespace reactive_controller {
     vel_pub_.publish(cmd_vel);
   }
 
-  bool ReactiveController::isQuaternionValid(const geometry_msgs::Quaternion& q){
-    //first we need to check if the quaternion has nan's or infs
-    if(!std::isfinite(q.x) || !std::isfinite(q.y) || !std::isfinite(q.z) || !std::isfinite(q.w)){
-      ROS_ERROR("Quaternion has nans or infs...");
-      return false;
-    }
-
-    tf2::Quaternion tf_q(q.x, q.y, q.z, q.w);
-
-    //next, we need to check if the length of the quaternion is close to zero
-    if(tf_q.length2() < 1e-6){
-      ROS_ERROR("Quaternion has length close to zero... discarding as navigation goal");
-      return false;
-    }
-
-    //next, we'll normalize the quaternion and check that it transforms the vertical vector correctly
-    tf_q.normalize();
-
-    tf2::Vector3 up(0, 0, 1);
-
-    double dot = up.dot(up.rotate(tf_q.getAxis(), tf_q.getAngle()));
-
-    if(fabs(dot - 1) > 1e-3){
-      ROS_ERROR("Quaternion is invalid... for navigation the z-axis of the quaternion must be close to vertical.");
-      return false;
-    }
-
-    return true;
-  }
-
-
 inline double abs_angle_diff(const double x, const double y)
 {
   return M_PI - fabs(fmod(fabs(x - y), 2*M_PI) - M_PI);
@@ -251,7 +189,7 @@ inline double abs_angle_diff(const double x, const double y)
 
 
   void ReactiveController::planThread(){
-    ROS_DEBUG_NAMED("move_base_plan_thread","Starting planner thread...");
+    ROS_DEBUG_NAMED("reactive_controller_plan_thread","Starting planner thread...");
     ros::NodeHandle n;
     ros::Timer timer;
     bool wait_for_wake = false;
@@ -263,7 +201,7 @@ inline double abs_angle_diff(const double x, const double y)
       //check if we should run the planner (the mutex is locked)
       while(wait_for_wake || !runPlanner_){
         //if we should not be running the planner then suspend this thread
-        ROS_ERROR("move_base_plan_thread","Planner thread is suspending");
+        ROS_ERROR("Planner thread is suspending");
         planner_cond_.wait(lock);
         wait_for_wake = false;
       }
@@ -396,7 +334,7 @@ inline double abs_angle_diff(const double x, const double y)
 
     ros::Rate r(controller_frequency_);
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("move_base","Starting up costmaps that were shut down previously");
+      ROS_DEBUG_NAMED("reactive_controller","Starting up costmaps that were shut down previously");
       controller_costmap_ros_->start();
     }
 
@@ -442,7 +380,7 @@ inline double abs_angle_diff(const double x, const double y)
       //check if execution of the goal has completed in some way
 
       ros::WallDuration t_diff = ros::WallTime::now() - start;
-      ROS_DEBUG_NAMED("move_base","Full control cycle time: %.9f\n", t_diff.toSec());
+      ROS_DEBUG_NAMED("reactive_controller","Full control cycle time: %.9f\n", t_diff.toSec());
 
       r.sleep();
       //make sure to sleep for the remainder of our cycle time
@@ -506,7 +444,7 @@ inline double abs_angle_diff(const double x, const double y)
       latest_plan_ = temp_plan;
       lock.unlock();
 
-      ROS_DEBUG_NAMED("move_base", "Got a new plan...swap pointers");
+      ROS_DEBUG_NAMED("reactive_controller", "Got a new plan...swap pointers");
 
       if (!tc_->setPlan(*controller_plan_)) {
         //ABORT and SHUTDOWN COSTMAPS
@@ -534,16 +472,13 @@ inline double abs_angle_diff(const double x, const double y)
 
 
     //ROS_ERROR_STREAM("Cycling " << state_);
-    //the move_base state machine, handles the control logic for navigation
+    //the reactive_controller state machine, handles the control logic for navigation
     switch(state_){
       //if we are in a planning state, then we'll attempt to make a plan
       case PLANNING:
         {
-          // NOTE(4-4-21): is this a race bug in original code?? Scope to release lock before thread grabs it
-          {
-            boost::recursive_mutex::scoped_lock lock(planner_mutex_);
-            runPlanner_ = true;
-          }
+          boost::recursive_mutex::scoped_lock lock(planner_mutex_);
+          runPlanner_ = true;
           planner_cond_.notify_one();
         }
         ROS_DEBUG("Waiting for plan, in the planning state.");
@@ -551,11 +486,11 @@ inline double abs_angle_diff(const double x, const double y)
 
       //if we're controlling, we'll attempt to find valid velocity commands
       case CONTROLLING:
-        ROS_DEBUG_NAMED("move_base","In controlling state.");
+        ROS_DEBUG_NAMED("reactive_controller","In controlling state.");
 
         //check to see if we've reached our goal
         if(tc_->isGoalReached()){
-          ROS_DEBUG_NAMED("move_base","Goal reached!");
+          ROS_DEBUG_NAMED("reactive_controller","Goal reached!");
           resetState();
 
           //disable the planner thread
@@ -625,9 +560,6 @@ inline double abs_angle_diff(const double x, const double y)
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
         if(recovery_behavior_enabled_){
           ROS_ERROR("Executing behavior %u", recovery_index_+1);
-
-          // HAX: Just gonna implement these here
-          //recovery_behaviors_[recovery_index_]->runBehavior();
           switch (recovery_index_) {
           case 0: {
             controller_costmap_ros_->resetLayers();
@@ -686,8 +618,6 @@ inline double abs_angle_diff(const double x, const double y)
             }
             break;
           }
-          case 4:
-            break;
           default:
             break;
           }
@@ -696,7 +626,7 @@ inline double abs_angle_diff(const double x, const double y)
           last_oscillation_reset_ = ros::Time::now();
 
           //we'll check if the recovery behavior actually worked
-          ROS_DEBUG_NAMED("move_base_recovery","Going back to planning state");
+          ROS_DEBUG_NAMED("reactive_controller_recovery","Going back to planning state");
           last_valid_plan_ = ros::Time::now();
           planning_retries_ = 0;
           state_ = PLANNING;
@@ -705,13 +635,13 @@ inline double abs_angle_diff(const double x, const double y)
           recovery_index_++;
         }
         else{
-          ROS_DEBUG_NAMED("move_base_recovery","All recovery behaviors have failed, locking the planner and disabling it.");
+          ROS_DEBUG_NAMED("reactive_controller_recovery","All recovery behaviors have failed, locking the planner and disabling it.");
           //disable the planner thread
           boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
           runPlanner_ = false;
           lock.unlock();
 
-          ROS_DEBUG_NAMED("move_base_recovery","Something should abort after this.");
+          ROS_DEBUG_NAMED("reactive_controller_recovery","Something should abort after this.");
 
           if(recovery_trigger_ == CONTROLLING_R){
             ROS_ERROR("Aborting because a valid control could not be found. Even after executing all recovery behaviors");
@@ -754,7 +684,7 @@ inline double abs_angle_diff(const double x, const double y)
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("move_base","Stopping costmaps");
+      ROS_DEBUG_NAMED("reactive_controller","Stopping costmaps");
       controller_costmap_ros_->stop();
     }
   }

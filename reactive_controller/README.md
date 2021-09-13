@@ -14,7 +14,7 @@ With the `melodic-devel` version of [our Kuri code](https://github.com/hcrlab/ku
 
 Now launch the navigator:
 
-    roslaunch reactive_controller kuri_local_navigator.launch
+    roslaunch reactive_controller reactive_controller.launch
 
 ### Robot
 
