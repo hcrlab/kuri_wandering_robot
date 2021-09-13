@@ -1,4 +1,4 @@
-# local_coverage_navigation
+# reactive_controller
 
 A fork of `move_base` with global planner capabilities removed. Kuri does not use `move_base` and did not ship with the necessary dependencies. Even if it had, `move_base` looks much different in newer releases thanks to TF2 adoption. To make the navigation component easy to develop, easy to deploy and easy to use in other contexts, this code is developed against the Melodic/Noetic releases of ROS Navigation. A Dockerfile is included for running on the robot.
 
@@ -14,7 +14,7 @@ With the `melodic-devel` version of [our Kuri code](https://github.com/hcrlab/ku
 
 Now launch the navigator:
 
-    roslaunch local_coverage_navigation kuri_local_navigator.launch
+    roslaunch reactive_controller kuri_local_navigator.launch
 
 ### Robot
 

@@ -5,7 +5,7 @@
     <arg name="map_file" default="$(find kuri_navigation)/maps/empty_map.yaml" />
 
     <!-- Autonomous Navigation -->
-    <include file="$(find local_coverage_navigation)/launch/kuri_local_navigator.launch" />
+    <include file="$(find reactive_controller)/launch/kuri_local_navigator.launch" />
 
     <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" />
 

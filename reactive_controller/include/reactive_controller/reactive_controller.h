@@ -55,16 +55,16 @@
 #include <std_srvs/Empty.h>
 
 #include <actionlib/server/simple_action_server.h>
-#include <local_coverage_navigation/NavigateAction.h>
+#include <reactive_controller/NavigateAction.h>
 
 #include <dynamic_reconfigure/server.h>
 
-namespace local_coverage_navigation {
+namespace reactive_controller {
 
-typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction> NavigateActionServer;
+typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> NavigateActionServer;
 
 
-  enum LocalCoverageNavigatorState {
+  enum ReactiveControllerState {
     PLANNING,
     CONTROLLING,
     CLEARING
@@ -78,22 +78,22 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
   };
 
   /**
-   * @class LocalCoverageNavigator
+   * @class ReactiveController
    * @brief A class that uses the actionlib::ActionServer interface that moves the robot base to a goal location.
    */
-  class LocalCoverageNavigator {
+  class ReactiveController {
     public:
       /**
        * @brief  Constructor for the actions
        * @param name The name of the action
        * @param tf A reference to a TransformListener
        */
-      LocalCoverageNavigator(tf2_ros::Buffer& tf);
+      ReactiveController(tf2_ros::Buffer& tf);
 
       /**
        * @brief  Destructor - Cleans up
        */
-      virtual ~LocalCoverageNavigator();
+      virtual ~ReactiveController();
 
       /**
        * @brief  Performs a control cycle
@@ -132,7 +132,7 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
 
       void planThread();
 
-      int executeCb(const local_coverage_navigation::NavigateGoalConstPtr& move_base_goal);
+      int executeCb(const reactive_controller::NavigateGoalConstPtr& move_base_goal);
 
 
       bool isQuaternionValid(const geometry_msgs::Quaternion& q);
@@ -166,10 +166,10 @@ typedef actionlib::SimpleActionServer<local_coverage_navigation::NavigateAction>
       double oscillation_timeout_, oscillation_distance_;
 
       NavigateActionServer* as_;
-      local_coverage_navigation::NavigateResult as_result;
-      local_coverage_navigation::NavigateFeedback as_feedback;
+      reactive_controller::NavigateResult as_result;
+      reactive_controller::NavigateFeedback as_feedback;
 
-      LocalCoverageNavigatorState state_;
+      ReactiveControllerState state_;
       RecoveryTrigger recovery_trigger_;
 
       ros::Time last_valid_plan_, last_valid_control_, last_oscillation_reset_;

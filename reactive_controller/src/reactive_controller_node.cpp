@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <local_coverage_navigation/local_coverage_navigator.h>
+#include <reactive_controller/reactive_controller.h>
 #include <tf2_ros/transform_listener.h>
 
 int main(int argc, char** argv){
@@ -35,7 +35,7 @@ int main(int argc, char** argv){
   tf2_ros::Buffer buffer(ros::Duration(10));
   tf2_ros::TransformListener tf(buffer);
 
-  local_coverage_navigation::LocalCoverageNavigator move_base( buffer );
+  reactive_controller::ReactiveController move_base( buffer );
 
   //ros::MultiThreadedSpinner s;
   ros::spin();

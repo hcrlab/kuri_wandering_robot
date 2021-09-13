@@ -1,8 +1,8 @@
 <package format="2">
-  <name>local_coverage_navigation</name>
+  <name>reactive_controller</name>
   <version>0.1.0</version>
   <description>
-    A local planner that attempts to maximize global map coverage
+    A local base controller, engineered to keep the robot meandering
   </description>
   <license>MIT</license>
   <maintainer email="nswalker@cs.washington.edu">Nick Walker</maintainer>

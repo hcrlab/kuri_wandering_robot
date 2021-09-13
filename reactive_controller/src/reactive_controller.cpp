@@ -35,7 +35,7 @@
 * Author: Eitan Marder-Eppstein
 *         Mike Phillips (put the planner in its own thread)
 *********************************************************************/
-#include <local_coverage_navigation/local_coverage_navigator.h>
+#include <reactive_controller/reactive_controller.h>
 #include <cmath>
 
 #include <boost/algorithm/string.hpp>
@@ -50,9 +50,9 @@
 #include <stdio.h>
 #include <random>
 
-namespace local_coverage_navigation {
+namespace reactive_controller {
 
-  LocalCoverageNavigator::LocalCoverageNavigator(tf2_ros::Buffer& tf) :
+  ReactiveController::ReactiveController(tf2_ros::Buffer& tf) :
     tf_(tf),
    controller_costmap_ros_(NULL),
     blp_loader_("nav_core", "nav_core::BaseLocalPlanner"),
@@ -60,7 +60,7 @@ namespace local_coverage_navigation {
     runPlanner_(false), setup_(false), p_freq_change_(false), c_freq_change_(false), new_global_plan_(false) {
 
     ros::NodeHandle private_nh("~");
-    as_ = new NavigateActionServer(private_nh, "navigate", boost::bind(&LocalCoverageNavigator::executeCb, this, _1), false);
+    as_ = new NavigateActionServer(private_nh, "navigate", boost::bind(&ReactiveController::executeCb, this, _1), false);
     ros::NodeHandle nh;
 
     recovery_trigger_ = PLANNING_R;
@@ -89,7 +89,7 @@ namespace local_coverage_navigation {
     controller_plan_ = new std::vector<geometry_msgs::PoseStamped>();
 
     //set up the planner's thread
-    planner_thread_ = new boost::thread(boost::bind(&LocalCoverageNavigator::planThread, this));
+    planner_thread_ = new boost::thread(boost::bind(&ReactiveController::planThread, this));
 
 
     //for commanding the base
@@ -127,7 +127,7 @@ namespace local_coverage_navigation {
     controller_costmap_ros_->start();
 
     //advertise a service for clearing the costmaps
-    clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &LocalCoverageNavigator::clearCostmapsService, this);
+    clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &ReactiveController::clearCostmapsService, this);
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
@@ -147,7 +147,7 @@ namespace local_coverage_navigation {
   }
 
 
-  void LocalCoverageNavigator::clearCostmapWindows(double size_x, double size_y){
+  void ReactiveController::clearCostmapWindows(double size_x, double size_y){
     geometry_msgs::PoseStamped global_pose;
 
     //clear the controller's costmap
@@ -178,7 +178,7 @@ namespace local_coverage_navigation {
     controller_costmap_ros_->getCostmap()->setConvexPolygonCost(clear_poly, costmap_2d::FREE_SPACE);
   }
 
-  bool LocalCoverageNavigator::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
+  bool ReactiveController::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
     //clear the costmaps
     boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_controller(*(controller_costmap_ros_->getCostmap()->getMutex()));
     controller_costmap_ros_->resetLayers();
@@ -188,7 +188,7 @@ namespace local_coverage_navigation {
 
 
 
-  LocalCoverageNavigator::~LocalCoverageNavigator(){
+  ReactiveController::~ReactiveController(){
 
     delete controller_costmap_ros_;
 
@@ -205,7 +205,7 @@ namespace local_coverage_navigation {
   }
 
 
-  void LocalCoverageNavigator::publishZeroVelocity(){
+  void ReactiveController::publishZeroVelocity(){
     geometry_msgs::Twist cmd_vel;
     cmd_vel.linear.x = 0.0;
     cmd_vel.linear.y = 0.0;
@@ -213,7 +213,7 @@ namespace local_coverage_navigation {
     vel_pub_.publish(cmd_vel);
   }
 
-  bool LocalCoverageNavigator::isQuaternionValid(const geometry_msgs::Quaternion& q){
+  bool ReactiveController::isQuaternionValid(const geometry_msgs::Quaternion& q){
     //first we need to check if the quaternion has nan's or infs
     if(!std::isfinite(q.x) || !std::isfinite(q.y) || !std::isfinite(q.z) || !std::isfinite(q.w)){
       ROS_ERROR("Quaternion has nans or infs...");
@@ -250,7 +250,7 @@ inline double abs_angle_diff(const double x, const double y)
 }
 
 
-  void LocalCoverageNavigator::planThread(){
+  void ReactiveController::planThread(){
     ROS_DEBUG_NAMED("move_base_plan_thread","Starting planner thread...");
     ros::NodeHandle n;
     ros::Timer timer;
@@ -292,7 +292,7 @@ inline double abs_angle_diff(const double x, const double y)
         goal_yi = std::max(0, std::min(goal_yi, (int)steps));
         goal_xi *= x_step;
         goal_yi *= y_step;
-        auto line_cost = local_coverage_navigation::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
+        auto line_cost = reactive_controller::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
         raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
         double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
         double angle_diff = abs_angle_diff(current_angle, angle);
@@ -387,7 +387,7 @@ inline double abs_angle_diff(const double x, const double y)
     }
   }
 
-  int LocalCoverageNavigator::executeCb(const local_coverage_navigation::NavigateGoalConstPtr& goal)
+  int ReactiveController::executeCb(const reactive_controller::NavigateGoalConstPtr& goal)
   {
     ROS_ERROR("LOOP START");
 
@@ -457,12 +457,12 @@ inline double abs_angle_diff(const double x, const double y)
     return -1;
   }
 
-  double LocalCoverageNavigator::distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2)
+  double ReactiveController::distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2)
   {
     return hypot(p1.pose.position.x - p2.pose.position.x, p1.pose.position.y - p2.pose.position.y);
   }
 
-  int LocalCoverageNavigator::executeCycle(){
+  int ReactiveController::executeCycle(){
     //boost::recursive_mutex::scoped_lock ecl(configuration_mutex_);
     //we need to be able to publish velocity commands
     geometry_msgs::Twist cmd_vel;
@@ -740,7 +740,7 @@ inline double abs_angle_diff(const double x, const double y)
     return 0;
   }
 
-  void LocalCoverageNavigator::resetState(){
+  void ReactiveController::resetState(){
     // Disable the planner thread
     boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
     runPlanner_ = false;
@@ -759,7 +759,7 @@ inline double abs_angle_diff(const double x, const double y)
     }
   }
 
-  bool LocalCoverageNavigator::getRobotPose(geometry_msgs::PoseStamped& global_pose, costmap_2d::Costmap2DROS* costmap)
+  bool ReactiveController::getRobotPose(geometry_msgs::PoseStamped& global_pose, costmap_2d::Costmap2DROS* costmap)
   {
     tf2::toMsg(tf2::Transform::getIdentity(), global_pose.pose);
     geometry_msgs::PoseStamped robot_pose;

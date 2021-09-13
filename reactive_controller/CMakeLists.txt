@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(local_coverage_navigation)
+project(reactive_controller)
 
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
@@ -55,33 +55,33 @@ include_directories(
 )
 
 # move_base
-add_library(local_coverage_navigator
-  src/local_coverage_navigator.cpp
+add_library(reactive_controller
+  src/reactive_controller.cpp
 )
-target_link_libraries(local_coverage_navigator
+target_link_libraries(reactive_controller
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
     )
-add_dependencies(local_coverage_navigator ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(reactive_controller ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(local_coverage_navigator_node
-  src/local_coverage_navigator_node.cpp
+add_executable(reactive_controller_node
+  src/reactive_controller_node.cpp
 )
 
 
-add_dependencies(local_coverage_navigator_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(local_coverage_navigator_node local_coverage_navigator)
-set_target_properties(local_coverage_navigator_node PROPERTIES OUTPUT_NAME local_coverage_navigator)
+add_dependencies(reactive_controller_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(reactive_controller_node reactive_controller)
+set_target_properties(reactive_controller_node PROPERTIES OUTPUT_NAME reactive_controller)
 
 install(
     TARGETS
-        local_coverage_navigator_node
+        reactive_controller_node
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 install(
     TARGETS
-        local_coverage_navigator
+        reactive_controller
     DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
 
