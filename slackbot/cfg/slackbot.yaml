@@ -1,0 +1,18 @@
+slack_bot_token: TEST_SLACK_BOT_TOKEN
+slack_user_token: TEST_SLACK_USER_TOKEN
+slack_signing_secret: TEST_SLACK_SIGNING_SECRET
+flask_port: 8194
+slack_port: 8193
+users_list:
+- TEST_USER_1
+- TEST_USER_2
+- TEST_USER_3
+TEST_USER_1:
+  low_battery_helper: true
+  where_am_i_helper: false
+TEST_USER_2:
+  low_battery_helper: true
+  where_am_i_helper: true
+TEST_USER_3:
+  low_battery_helper: false
+  where_am_i_helper: true

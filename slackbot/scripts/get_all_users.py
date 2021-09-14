@@ -13,10 +13,11 @@ slack_app = App(
 )
 
 desired_users = [
+    # TODO: Add users in the following format
     # ("First Name", "Last Name", "email@email.com"),
 ]
 
-# Request all the users
+# Request all the users, and find the desired users
 found_user_i = []
 done = False
 next_cursor = ''
