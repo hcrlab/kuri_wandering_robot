@@ -12,9 +12,7 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 # Python Default Libraries
 import base64
 import csv
-import cv2
 from enum import Enum
-import numpy as np
 import os
 import requests
 import threading
