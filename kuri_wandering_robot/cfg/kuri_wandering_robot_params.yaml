@@ -1,0 +1,11 @@
+# slackbot_url must point to the URL that the Slackbot is running on, and the
+# port number that Flask is listening on (8194 by default)
+slackbot_url: "http://url-to-remote-machine:8194"
+
+# When the battery goes from above this threshold to at-or-below it, send a low
+# battery help message
+battery_notification_thresholds: [40, 20, 10, 5, 4, 3, 2, 1]
+# If the battery is < this and Kuri is docked, charge
+to_charge_threshold: 50
+# If the batter is >= this and Kuri is charging, switch back to NORMAL
+charging_done_threshold: 90

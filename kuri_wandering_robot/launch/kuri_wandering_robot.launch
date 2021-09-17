@@ -1,0 +1,13 @@
+<launch>
+  <env name="ROSCONSOLE_CONFIG_FILE" value="$(find kuri_cmm_demo)/cfg/custom_rosconsole.conf"/>
+
+  <!-- Launch the overall CMM Demo node -->
+  <node pkg="kuri_wandering_robot" type="kuri_wandering_robot.py" name="kuri_wandering_robot" output="screen" respawn="true">
+    <rosparam command="load" file="$(find kuri_wandering_robot)/cfg/kuri_wandering_robot_params.yaml" />
+    <param name='send_messages_database_filepath' value="$(find kuri_wandering_robot)/cfg/sent_messages_database.pkl"/>
+  </node>
+
+  <!-- Autonomous Navigation -->
+  <include file="$(find reactive_controller)/launch/kuri_reactive_controller.launch" />
+
+</launch>

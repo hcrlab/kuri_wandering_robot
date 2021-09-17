@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package>
-  <name>kuri_cmm_demo</name>
+  <name>kuri_localization_free_nav_with_human_help</name>
   <version>0.0.0</version>
-  <description>The kuri_cmm_demo package</description>
+  <description>The kuri_localization_free_nav_with_human_help package</description>
 
   <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
@@ -13,7 +13,7 @@
   <!-- One license tag required, multiple allowed, one license per tag -->
   <!-- Commonly used license strings: -->
   <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
-  <license>TODO</license>
+  <license>BSD</license>
 
 
   <!-- Url tags are optional, but mutiple are allowed, one per tag -->

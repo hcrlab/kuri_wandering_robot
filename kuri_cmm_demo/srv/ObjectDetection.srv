@@ -1,4 +1,0 @@
-sensor_msgs/CompressedImage compressed_image
----
-DetectedObjects detected_objects
-bool success

@@ -30,7 +30,7 @@ class SentMessagesDatabase(object):
         """
         message_id = self.num_messages_sent
         self.num_messages_sent += 1
-        return message_id
+        return str(message_id)
 
     def add_sent_message(self, user_id, ts, message_id, can_users_respond=False):
         """
@@ -88,28 +88,32 @@ class SentMessagesDatabase(object):
             return
         self.user_id_ts_to_responses[(user_id, ts)].append((action_ts, response))
 
-    def get_responses(self, message_ids=None):
+    def get_responses(self, message_ids_and_action_ts=None):
         """
         For the specified message IDs, return the user responses if any.
 
-        :param message_ids: (list or None) a list of the requested message IDs.
-                            If None, return responses for all message IDs.
+        :param message_ids_and_action_ts: ((dict: message_id -> action_ts) or
+            None) a dict of the requested message IDs and the action_ts after
+            which to send updates. If None, return responses for all message IDs.
         :returns: dictionary mapping message IDs to a chronological list of
-                  responses.
+                  responses (where a response is a tuple of (action_id, response)).
         """
-        if message_ids is None:
-            message_ids = self.message_id_to_user_id_ts.keys()
+        if message_ids_and_action_ts is None:
+            message_ids_and_action_ts = {}
+            for message_id in self.message_id_to_user_id_ts.keys():
+                message_ids_and_action_ts[message_id] = 0.0
 
         message_id_to_responses = {}
 
-        for message_id in message_ids:
+        for message_id in message_ids_and_action_ts:
             if message_id not in self.message_id_to_user_id_ts: continue
             for (user_id, ts) in self.message_id_to_user_id_ts[message_id]:
                 if (user_id, ts) not in self.user_id_ts_to_responses: continue
                 for (action_ts, response) in self.user_id_ts_to_responses[(user_id, ts)]:
-                    if message_id not in message_id_to_responses:
-                        message_id_to_responses[message_id] = []
-                    message_id_to_responses[message_id].append((action_ts, response))
+                    if float(action_ts) > float(message_ids_and_action_ts[message_id]):
+                        if message_id not in message_id_to_responses:
+                            message_id_to_responses[message_id] = []
+                        message_id_to_responses[message_id].append((action_ts, response))
 
         return message_id_to_responses
 
