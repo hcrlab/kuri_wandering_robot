@@ -48,13 +48,13 @@ class SentMessagesDatabase(object):
 
     def add_user_response(self, message_id, action_ts, response):
         """
-        Adds the user response and action_id for message_id
+        Adds the user response and action_ts for message_id
         """
         with self.lock:
             if message_id not in self.message_id_to_action_ts_response:
                 rospy.logwarn("Got message_id %s which has not yet been added to the sent_messages_database. Ignoring." % message_id)
             else:
-                self.message_id_to_action_ts_response[message_id].append((action_id, response))
+                self.message_id_to_action_ts_response[message_id].append((action_ts, response))
 
     def get_responses(self, message_id):
         """

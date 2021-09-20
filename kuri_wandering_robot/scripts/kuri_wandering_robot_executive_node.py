@@ -3,10 +3,10 @@
 import actionlib
 from actionlib_msgs.msg import GoalStatus
 from control_msgs.msg import JointTrajectoryControllerState, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
-from cv_bridge import CvBridge
-from kuri_localization_free_nav_with_human_help.msg import Power
+from kuri_wandering_robot.msg import Power
 from reactive_controller.msg import NavigateAction, NavigateGoal
 import rospy
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Empty
 from trajectory_msgs.msg import JointTrajectoryPoint
 # Python Default Libraries
@@ -18,6 +18,8 @@ import requests
 import threading
 import time
 import traceback
+# Custom Libraries
+from sent_messages_database import SentMessagesDatabase
 
 class KuriWanderingRobotState(Enum):
     """
@@ -186,19 +188,19 @@ class KuriWanderingRobot(object):
             with self.state_lock:
                 state_at_start_of_loop = self.state
                 if (self.state == KuriWanderingRobotState.NORMAL):
-                    goal_state = self.local_coverage_navigator_action.get_state()
+                    goal_state = self.wandering_module_action.get_state()
                     if (self.state_changed or goal_state == GoalStatus.ABORTED or goal_state == GoalStatus.SUCCEEDED):
-                        rospy.logdebug("Waiting for local_coverage_navigator_action server")
-                        self.local_coverage_navigator_action.wait_for_server()
-                        rospy.logdebug("Sending goal to local_coverage_navigator_action")
+                        rospy.logdebug("Waiting for wandering_module_action server")
+                        self.wandering_module_action.wait_for_server()
+                        rospy.logdebug("Sending goal to wandering_module_action")
                         # Effort -1 means "don't stop unless preempted"
-                        self.local_coverage_navigator_action.send_goal(NavigateGoal(effort=-1))
+                        self.wandering_module_action.send_goal(NavigateGoal(effort=-1))
                         self.open_eyes()
                     with self.previous_battery_lock:
                         if (self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present):
                             self.close_eyes()
                             self.state = KuriWanderingRobotState.CHARGING
-                            self.local_coverage_navigator_action.cancel_all_goals()
+                            self.wandering_module_action.cancel_all_goals()
                             rospy.loginfo("State: NORMAL ==> CHARGING")
                 elif self.state == KuriWanderingRobotState.CHARGING:
                     with self.previous_battery_lock:
@@ -234,7 +236,7 @@ class KuriWanderingRobot(object):
                         # Send the low-battery helper notifications when the battery
                         # crosses the thresholds defined in self.battery_notification_thresholds
                         for i in range(len(self.battery_notification_thresholds)):
-                            if (self.previous_battery is None or self.previous_battery > self.battery_notification_thresholds[i]) and msg.battery.pct <= self.battery_notification_thresholds[i]:
+                            if (self.previous_battery is None or (self.previous_battery > self.battery_notification_thresholds[i]) and msg.battery.pct <= self.battery_notification_thresholds[i]):
                                 try:
                                     # Send a low_battery_alert
                                     rospy.loginfo("Sending battery request for pct %s" % msg.battery.pct)
@@ -278,6 +280,7 @@ class KuriWanderingRobot(object):
             res_json = res.json()
             message_id = res_json['message_id']
             self.sent_messages_database.add_respondable_message(message_id)
+            self.database_updated()
         except Exception as e:
             rospy.logwarn("Error communicating with Slackbot /where_am_i at URL %s." % self.slackbot_url)
             if "res" in locals():
