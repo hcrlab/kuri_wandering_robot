@@ -96,12 +96,19 @@ class KuriWanderingRobot(object):
         self.where_am_i_help_sub = rospy.Subscriber(
             "/where_am_i_help", Empty, self.where_am_i_help_callback, queue_size=1)
 
-        # Parameters relevant to storing images and message IDs
+        # Initialize storing images and message IDs
         self.sent_messages_database_filepath = rospy.get_param('~send_messages_database_filepath')
         self.sent_messages_database = SentMessagesDatabase.load(
             self.sent_messages_database_filepath)
         self.database_save_interval = 1
         self.database_updates_since_last_save = 0
+
+        # Initialize the head controller
+        self.head_state_sub = rospy.Subscriber(
+            "/head_controller/state", JointTrajectoryControllerState, self.head_state_callback, queue_size=1)
+        self.head_controller_action = actionlib.SimpleActionClient('/head_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+        self.head_tilt_speed = 0.2 # head tilt is in [-0.8, 0.3]
+        self.head_pan_speed = 0.2 # head pan is in [-0.75, 0.75]
 
         # Initialize the Slackbot updates thread
         self.slackbot_responses_thread = threading.Thread(
@@ -109,12 +116,13 @@ class KuriWanderingRobot(object):
         )
         self.slackbot_responses_thread.start()
 
-        # Parameters relevant to the state machine
+        # Initialize the state machine
         self.state_machine_thread = threading.Thread(
             target=self.state_machine_control_loop,
         )
         self.state_machine_thread.start()
 
+        self.has_centered_head = False
         self.has_loaded = True
 
     def database_updated(self, num_updates=1):
@@ -170,6 +178,56 @@ class KuriWanderingRobot(object):
         self.eyelid_controller_action.wait_for_server()
         self.eyelid_controller_action.send_goal(goal)
         self.eyelid_controller_action.wait_for_result(duration)
+
+    def head_state_callback(self, head_state_msg):
+        """
+        Get the head's current position
+        """
+        if not self.has_loaded:
+            return
+
+        if not self.has_centered_head:
+            self.center_head(head_state_msg.actual.positions[0], head_state_msg.actual.positions[1])
+
+    def center_head(self, current_pan, current_tile):
+        """
+        Center Kuri's head. This involves moving from the current pan and tilt
+        to the centered values of (0.0, -0.3)
+        """
+        pan_endpoint = 0.0
+        tilt_endpoint = -0.3
+        n_waypoints = 10
+
+        # Compute the actual endpoint and duration_secs
+        duration_secs = max(
+            abs(pan_endpoint-current_pan)/self.head_pan_speed,
+            abs(tilt_endpoint-current_tilt)/self.head_tilt_speed)
+        duration = rospy.Duration.from_sec(duration_secs)
+
+        # Create the goal
+        goal = FollowJointTrajectoryGoal()
+        goal.trajectory.header.stamp = rospy.Time.now()
+        goal.trajectory.joint_names = ["head_1_joint", "head_2_joint"]
+        goal.trajectory.points = []
+        pan_interval = (pan_endpoint-current_pan)/(n_waypoints-1)
+        tilt_interval = (tilt_endpoint-current_tilt)/(n_waypoints-1)
+        time_interval = duration/n_waypoints
+        for i in range(n_waypoints):
+            point = JointTrajectoryPoint()
+            point.positions = [current_pan + i*pan_interval, current_tilt + i*tilt_interval]
+            point.velocities = []
+            point.accelerations = []
+            point.effort = []
+            point.time_from_start = (i+1)*time_interval
+            goal.trajectory.points.append(point)
+
+        # Send the goal
+        self.head_controller_action.wait_for_server()
+        self.head_controller_action.send_goal(goal)
+        self.head_controller_action.wait_for_result(duration)
+
+        self.has_centered_head = True
+
 
     def state_machine_control_loop(self, rate_hz=10):
         """
