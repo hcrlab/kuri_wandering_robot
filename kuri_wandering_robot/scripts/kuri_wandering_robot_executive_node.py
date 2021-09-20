@@ -189,7 +189,7 @@ class KuriWanderingRobot(object):
         if not self.has_centered_head:
             self.center_head(head_state_msg.actual.positions[0], head_state_msg.actual.positions[1])
 
-    def center_head(self, current_pan, current_tile):
+    def center_head(self, current_pan, current_tilt):
         """
         Center Kuri's head. This involves moving from the current pan and tilt
         to the centered values of (0.0, -0.3)
