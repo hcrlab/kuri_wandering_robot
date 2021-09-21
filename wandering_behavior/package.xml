@@ -4,7 +4,7 @@
   <description>
     A local base controller, engineered to keep the robot meandering
   </description>
-  <license>MIT</license>
+  <license>BSD</license>
   <maintainer email="nswalker@cs.washington.edu">Nick Walker</maintainer>
   <author email="nswalker@cs.washington.edu">Nick Walker</author>
 
