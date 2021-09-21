@@ -143,7 +143,6 @@ namespace wandering_behavior {
 
     //we're all set up now so we can start the action server
     as_->start();
-    ROS_ERROR("Server started");
   }
 
 
@@ -201,7 +200,7 @@ inline double abs_angle_diff(const double x, const double y)
       //check if we should run the planner (the mutex is locked)
       while(wait_for_wake || !runPlanner_){
         //if we should not be running the planner then suspend this thread
-        ROS_ERROR("Planner thread is suspending");
+        ROS_INFO("Planner thread is suspending");
         planner_cond_.wait(lock);
         wait_for_wake = false;
       }
@@ -247,8 +246,7 @@ inline double abs_angle_diff(const double x, const double y)
       }
       //ROS_INFO_STREAM("Best cost" << cheapest_cost << " Best diff: " << best_angle_diff);
       if (cheapest_cost > cost_threshold) {
-
-        ROS_ERROR_STREAM_THROTTLE(1, "No plan beneath threshold " << cost_threshold);
+        ROS_WARN_STREAM_THROTTLE(1, "No plan beneath threshold " << cost_threshold);
       } else {
         int goal_xi = abs((int)((cheapest_goal_i % steps4) - steps32)) - half_steps;
         int goal_yi = abs((int)(((cheapest_goal_i + steps) % steps4) - steps32)) - half_steps;
@@ -310,7 +308,6 @@ inline double abs_angle_diff(const double x, const double y)
 
           lock.unlock();
         }
-        ROS_ERROR("Generated a plan from the base_global_planner");
 
       }
       // Even if the plan doesn't change, we need to break out of the
@@ -446,7 +443,7 @@ inline double abs_angle_diff(const double x, const double y)
 
       if (!tc_->setPlan(*controller_plan_)) {
         //ABORT and SHUTDOWN COSTMAPS
-        ROS_ERROR("Failed to pass global plan to the controller, aborting.");
+        ROS_ERROR("Failed to pass direction plan to the controller, aborting.");
         resetState();
         boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
 
@@ -458,7 +455,7 @@ inline double abs_angle_diff(const double x, const double y)
         return -1;
       } else
       {
-        ROS_ERROR("Plan set, planner still going");
+        //ROS_ERROR("Plan set, planner still going");
         // HAX: leave the planner running, see if we replan around obstacle areas fast enough
         //runPlanner_ = false;
       }
@@ -557,7 +554,7 @@ inline double abs_angle_diff(const double x, const double y)
         ROS_ERROR("In clearing/recovery state");
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
         if(recovery_behavior_enabled_){
-          ROS_ERROR("Executing behavior %u", recovery_index_+1);
+          ROS_INFO("Executing behavior %u", recovery_index_+1);
           switch (recovery_index_) {
           case 0: {
             controller_costmap_ros_->resetLayers();
