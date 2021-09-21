@@ -5,15 +5,11 @@ FROM ros:melodic
 RUN apt update && \
 apt-get install -y -qq iputils-ping \
 libboost-all-dev \
-python-boto3 \
-python-numpy \
-python-opencv \
 python-pip \
-python-scipy \
+python-requests \
 ros-melodic-catkin \
 ros-melodic-base-local-planner \
 ros-melodic-control-msgs \
-ros-melodic-cv-bridge \
 ros-melodic-dynamic-reconfigure \
 ros-melodic-dwa-local-planner \
 ros-melodic-geometry-msgs \
@@ -24,8 +20,6 @@ ros-melodic-message-runtime \
 ros-melodic-nav-msgs \
 ros-melodic-nodelet \
 ros-melodic-pluginlib \
-ros-melodic-ros-control \
-ros-melodic-ros-controllers \
 ros-melodic-robot-state-publisher \
 ros-melodic-rosbash \
 ros-melodic-roscpp \
@@ -36,8 +30,8 @@ ros-melodic-std-msgs \
 ros-melodic-tf-conversions \
 ros-melodic-tf2-ros \
 ros-melodic-tf2-geometry-msgs && \
-pip install -U catkin_tools
-# RUN sudo ln -s /usr/share/pyshared/lsb_release.py /usr/local/lib/python3.6/dist-packages/lsb_release.py
+pip install -U catkin_tools # && \
+# sudo ln -s /usr/share/pyshared/lsb_release.py /usr/local/lib/python3.6/dist-packages/lsb_release.py
 
 COPY ./entrypoint.sh /
 ENTRYPOINT ["/entrypoint.sh"]

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(kuri_cmm_demo)
+project(kuri_wandering_robot)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   control_msgs
   trajectory_msgs
   message_generation
-  local_coverage_navigation
+  reactive_controller
 )
 
 ## System dependencies are found with CMake's conventions
@@ -51,19 +51,14 @@ find_package(catkin REQUIRED COMPONENTS
 ## Generate messages in the 'msg' folder
 add_message_files(
   FILES
-  ObjectInstance.msg
-  Object.msg
-  DetectedObjects.msg
   Power.msg
   BatteryCapacity.msg
 )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  ObjectDetection.srv
-  GetObjectsAtTime.srv
-)
+# add_service_files(
+#   FILES
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -75,8 +70,6 @@ add_service_files(
 ## Generate added messages and services with any dependencies listed here
 generate_messages(
   DEPENDENCIES
-  sensor_msgs
-  std_msgs
 )
 
 ################################################

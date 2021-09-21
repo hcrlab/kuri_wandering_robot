@@ -96,7 +96,7 @@ class FlaskSlackbot(object):
             signing_secret=slackbot_conf['slack_signing_secret']
         )
         self.slack_port = slackbot_conf['slack_port']
-        self.slack_app.action(re.compile("button_click_[a-z]+"))(self.button_click)
+        self.slack_app.action(re.compile("button_click_[*]*"))(self.button_click)
         self.slack_app.action("submit_input")(self.submit_input)
 
     def database_updated(self, num_updates=1):
@@ -321,20 +321,23 @@ class FlaskSlackbot(object):
         """
         POST method at the endpoint /get_updates
 
-        :param message_ids: (list) an optional parameter that contains the
-                            message IDs to get updates for.
+        :param message_ids_and_action_ts: (dict: str -> float) an optional
+            parameter that specifies the message_ids that you want updates for,
+            and action_ts that you want updates after (to prevent sending
+            updates you already have).
+
         :returns: a json payload with `message_id_to_responses` which is a
                   dict mapping from message IDs to a list of user responses,
                   ordered chronologically. where each user responses contains a
                   timestamp and a responses.
         """
         # Decode the request
-        message_ids = None
-        if 'message_ids' in request.json:
-            message_ids = request.json['message_ids']
+        message_ids_and_action_ts = None
+        if 'message_ids_and_action_ts' in request.json:
+            message_ids_and_action_ts = request.json['message_ids_and_action_ts']
 
         # Get the user responses
-        message_id_to_responses = self.sent_messages_database.get_responses(message_ids)
+        message_id_to_responses = self.sent_messages_database.get_responses(message_ids_and_action_ts)
 
         # Send the result as a JSON payload
         response = self.flask_app.response_class(
