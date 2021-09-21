@@ -91,6 +91,8 @@ class KuriWanderingRobot(object):
         self.to_charge_threshold = rospy.get_param('~to_charge_threshold', 50)
         # if the batter is greater than this and Kuri is charging, switch back to NORMAL
         self.charging_done_threshold = rospy.get_param('~charging_done_threshold', 90)
+        # Whether the low battery message should include Kuri's current camera image
+        self.low_battery_message_include_image = rospy.get_param('~low_battery_message_include_image', True)
 
         # Initialize the dummy `where_am_i` anomaly detector
         self.where_am_i_help_sub = rospy.Subscriber(
@@ -297,10 +299,16 @@ class KuriWanderingRobot(object):
                             if (self.previous_battery is None or (self.previous_battery > self.battery_notification_thresholds[i]) and msg.battery.pct <= self.battery_notification_thresholds[i]):
                                 try:
                                     # Send a low_battery_alert
+                                    dict_to_send = {'battery_pct':msg.battery.pct}
+                                    if self.low_battery_message_include_image:
+                                        with self.latest_image_lock:
+                                            if self.latest_image is not None:
+                                                image_contents = base64.b64encode(bytearray(self.latest_image.data)).decode('ascii')
+                                                dict_to_send['image'] = image_contents
                                     rospy.loginfo("Sending battery request for pct %s" % msg.battery.pct)
                                     res = requests.post(
                                         os.path.join(self.slackbot_url, 'low_battery'),
-                                        json={'battery_pct':msg.battery.pct},
+                                        json=dict_to_send,
                                     )
                                     res_json = res.json()
                                     if not res_json['success']:
@@ -324,13 +332,15 @@ class KuriWanderingRobot(object):
         tell it where it is should implement their own anomaly detection system
         for triggering this help request.
         """
-        if self.latest_image is None:
-            rospy.loginfo("Attempted to send where_am_i help request but have no image.")
-            return
+        with self.latest_image_lock:
+            if self.latest_image is None:
+                rospy.loginfo("Attempted to send where_am_i help request but have no image.")
+                return
         try:
             # Send a low_battery_alert
             rospy.loginfo("Sending where_am_i help request")
-            image_contents = base64.b64encode(bytearray(self.latest_image.data)).decode('ascii')
+            with self.latest_image_lock:
+                image_contents = base64.b64encode(bytearray(self.latest_image.data)).decode('ascii')
             res = requests.post(
                 os.path.join(self.slackbot_url, 'where_am_i'),
                 json={'image':image_contents, 'options':['Lounge', "Office#252", "200 Corridoor", "Atrium"]},

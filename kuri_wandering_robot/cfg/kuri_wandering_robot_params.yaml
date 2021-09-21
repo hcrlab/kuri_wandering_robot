@@ -9,3 +9,5 @@ battery_notification_thresholds: [40, 20, 10, 5, 4, 3, 2, 1]
 to_charge_threshold: 50
 # If the batter is >= this and Kuri is charging, switch back to NORMAL
 charging_done_threshold: 90
+# Should the low battery message include the latest image?
+low_battery_message_include_image: True
