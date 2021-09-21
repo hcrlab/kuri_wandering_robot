@@ -8,6 +8,6 @@
   </node>
 
   <!-- Autonomous Navigation -->
-  <include file="$(find reactive_controller)/launch/kuri_reactive_controller.launch" />
+  <include file="$(find wandering_behavior)/launch/kuri_wandering_behavior.launch" />
 
 </launch>

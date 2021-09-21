@@ -4,7 +4,7 @@ import actionlib
 from actionlib_msgs.msg import GoalStatus
 from control_msgs.msg import JointTrajectoryControllerState, FollowJointTrajectoryAction, FollowJointTrajectoryGoal
 from kuri_wandering_robot.msg import Power
-from reactive_controller.msg import NavigateAction, NavigateGoal
+from wandering_behavior.msg import WanderAction, WanderGoal
 import rospy
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Empty
@@ -23,7 +23,7 @@ from sent_messages_database import SentMessagesDatabase
 
 class KuriWanderingRobotState(Enum):
     """
-    During NORMAL, the base moves according to reactive_controller.
+    During NORMAL, the base moves according to wandering_behavior.
     During CHARGING, the robot's eyes are closed and it is charging. The robot
     transitions from NORMAL to CHARGING if its battery is below a threshold and
     it is on the charger. It transitions from CHARGING to NORMAL if it's battery
@@ -67,7 +67,7 @@ class KuriWanderingRobot(object):
         self.state = KuriWanderingRobotState.NORMAL
 
         # Initialize the wandering module
-        self.wandering_module_action = actionlib.SimpleActionClient('/reactive_controller/navigate', NavigateAction)
+        self.wandering_module_action = actionlib.SimpleActionClient('/wandering_behavior/wander', WanderAction)
 
         # Initialize the eye controller
         self.eyelid_controller_action = actionlib.SimpleActionClient('/eyelids_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
@@ -236,7 +236,7 @@ class KuriWanderingRobot(object):
         The control loop for the state machine. All of the state machine logic
         is handled in this function and the functions it calls.
 
-        During NORMAL, the base moves according to reactive_controller.
+        During NORMAL, the base moves according to wandering_behavior.
         During CHARGING, the robot's eyes are closed and it is charging. The
         robot transitions from NORMAL to CHARGING if its battery is below a
         threshold and it is on the charger. It transitions from CHARGING to
@@ -254,7 +254,7 @@ class KuriWanderingRobot(object):
                         self.wandering_module_action.wait_for_server()
                         rospy.logdebug("Sending goal to wandering_module_action")
                         # Effort -1 means "don't stop unless preempted"
-                        self.wandering_module_action.send_goal(NavigateGoal(effort=-1))
+                        self.wandering_module_action.send_goal(WanderGoal(effort=-1))
                         self.open_eyes()
                     with self.previous_battery_lock:
                         if (self.previous_battery is not None and self.previous_battery < self.to_charge_threshold and self.previous_dock_present):

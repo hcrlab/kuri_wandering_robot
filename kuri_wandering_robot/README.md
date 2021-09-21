@@ -40,8 +40,8 @@ Inside the Docker container, run `roslaunch kuri_wandering_robot kuri_wandering_
 
 This node has two states: NORMAL and CHARGING:
 
-- NORMAL toggles on the `reactive_controller` action server and opens Kuri's eyes. The robot stays in NORMAL until it detects that it is connected to its charger and its battery is lower than `to_charge_threshold` (a configurable parameter -- see `./cfg/kuri_wandering_robot_params.yaml`). It then switches to CHARGING.
-- CHARGING closes Kuri's eyes, toggles off the the `reactive_controller`, and continually checks the battery status. If the battery is either above `charging_done_threshold` (another configurable parameter) or the robot is moved off of its charger, it transitions back to NORMAL.
+- NORMAL toggles on the `wandering_behavior` action server and opens Kuri's eyes. The robot stays in NORMAL until it detects that it is connected to its charger and its battery is lower than `to_charge_threshold` (a configurable parameter -- see `./cfg/kuri_wandering_robot_params.yaml`). It then switches to CHARGING.
+- CHARGING closes Kuri's eyes, toggles off the the `wandering_behavior`, and continually checks the battery status. If the battery is either above `charging_done_threshold` (another configurable parameter) or the robot is moved off of its charger, it transitions back to NORMAL.
 
 (Note that in order to connect Kuri to its charger, the helper may have to hold Kuri in place, pushing it into its charger, for a few seconds. They will know Kuri is charging onces its wheels stop moving and its eyes close.)
 

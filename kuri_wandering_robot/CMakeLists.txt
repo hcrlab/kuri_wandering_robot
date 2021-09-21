@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   control_msgs
   trajectory_msgs
   message_generation
-  reactive_controller
+  wandering_behavior
 )
 
 ## System dependencies are found with CMake's conventions

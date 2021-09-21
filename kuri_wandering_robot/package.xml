@@ -47,8 +47,8 @@
   <build_depend>control_msgs</build_depend>
   <build_depend>trajectory_msgs</build_depend>
   <build_depend>message_generation</build_depend>
-  <build_depend>reactive_controller</build_depend>
-  <run_depend>reactive_controller</run_depend>
+  <build_depend>wandering_behavior</build_depend>
+  <run_depend>wandering_behavior</run_depend>
   <run_depend>message_runtime</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>rospy</run_depend>
