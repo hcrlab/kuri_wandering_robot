@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(reactive_controller)
+project(wandering_behavior)
 
 set(CMAKE_CXX_FLAGS "-std=c++11")
 
@@ -29,7 +29,7 @@ add_action_files(
         DIRECTORY
         action
         FILES
-        Navigate.action
+        Wander.action
 )
 
 generate_messages(
@@ -55,33 +55,33 @@ include_directories(
 )
 
 # move_base
-add_library(reactive_controller
-  src/reactive_controller.cpp
+add_library(wandering_behavior
+  src/wandering_behavior.cpp
 )
-target_link_libraries(reactive_controller
+target_link_libraries(wandering_behavior
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
     )
-add_dependencies(reactive_controller ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(wandering_behavior ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-add_executable(reactive_controller_node
-  src/reactive_controller_node.cpp
+add_executable(wandering_behavior_node
+  src/wandering_behavior_node.cpp
 )
 
 
-add_dependencies(reactive_controller_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(reactive_controller_node reactive_controller)
-set_target_properties(reactive_controller_node PROPERTIES OUTPUT_NAME reactive_controller)
+add_dependencies(wandering_behavior_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(wandering_behavior_node wandering_behavior)
+set_target_properties(wandering_behavior_node PROPERTIES OUTPUT_NAME wandering_behavior)
 
 install(
     TARGETS
-        reactive_controller_node
+        wandering_behavior_node
     DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
 install(
     TARGETS
-        reactive_controller
+        wandering_behavior
     DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )
 

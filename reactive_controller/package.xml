@@ -1,5 +1,5 @@
 <package format="2">
-  <name>reactive_controller</name>
+  <name>wandering_behavior</name>
   <version>0.1.0</version>
   <description>
     A local base controller, engineered to keep the robot meandering

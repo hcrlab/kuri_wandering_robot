@@ -35,7 +35,7 @@
 * Author: Eitan Marder-Eppstein
 *         Mike Phillips (put the planner in its own thread)
 *********************************************************************/
-#include <reactive_controller/reactive_controller.h>
+#include <wandering_behavior/wandering_behavior.h>
 #include <cmath>
 
 #include <boost/algorithm/string.hpp>
@@ -50,9 +50,9 @@
 #include <stdio.h>
 #include <random>
 
-namespace reactive_controller {
+namespace wandering_behavior {
 
-  ReactiveController::ReactiveController(tf2_ros::Buffer& tf) :
+  WanderingBehavior::WanderingBehavior(tf2_ros::Buffer& tf) :
     tf_(tf),
    controller_costmap_ros_(NULL),
     blp_loader_("nav_core", "nav_core::BaseLocalPlanner"),
@@ -60,7 +60,7 @@ namespace reactive_controller {
     runPlanner_(false), new_global_plan_(false) {
 
     ros::NodeHandle private_nh("~");
-    as_ = new NavigateActionServer(private_nh, "navigate", boost::bind(&ReactiveController::executeCb, this, _1), false);
+    as_ = new WanderActionServer(private_nh, "navigate", boost::bind(&WanderingBehavior::executeCb, this, _1), false);
     ros::NodeHandle nh;
 
     recovery_trigger_ = PLANNING_R;
@@ -89,14 +89,14 @@ namespace reactive_controller {
     controller_plan_ = new std::vector<geometry_msgs::PoseStamped>();
 
     //set up the planner's thread
-    planner_thread_ = new boost::thread(boost::bind(&ReactiveController::planThread, this));
+    planner_thread_ = new boost::thread(boost::bind(&WanderingBehavior::planThread, this));
 
 
     //for commanding the base
     vel_pub_ = nh.advertise<geometry_msgs::Twist>("cmd_vel", 1);
     current_goal_pub_ = private_nh.advertise<geometry_msgs::PoseStamped>("current_goal", 0 );
 
-    ros::NodeHandle action_nh("reactive_controller");
+    ros::NodeHandle action_nh("wandering_behavior");
 
     //we'll assume the radius of the robot to be consistent with what's specified for the costmaps
     private_nh.param("local_costmap/inscribed_radius", inscribed_radius_, 0.325);
@@ -127,11 +127,11 @@ namespace reactive_controller {
     controller_costmap_ros_->start();
 
     //advertise a service for clearing the costmaps
-    clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &ReactiveController::clearCostmapsService, this);
+    clear_costmaps_srv_ = private_nh.advertiseService("clear_costmaps", &WanderingBehavior::clearCostmapsService, this);
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("reactive_controller","Stopping costmaps initially");
+      ROS_DEBUG_NAMED("wandering_behavior","Stopping costmaps initially");
       controller_costmap_ros_->stop();
     }
 
@@ -147,7 +147,7 @@ namespace reactive_controller {
   }
 
 
-  bool ReactiveController::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
+  bool WanderingBehavior::clearCostmapsService(std_srvs::Empty::Request &req, std_srvs::Empty::Response &resp){
     //clear the costmaps
     boost::unique_lock<costmap_2d::Costmap2D::mutex_t> lock_controller(*(controller_costmap_ros_->getCostmap()->getMutex()));
     controller_costmap_ros_->resetLayers();
@@ -157,7 +157,7 @@ namespace reactive_controller {
 
 
 
-  ReactiveController::~ReactiveController(){
+  WanderingBehavior::~WanderingBehavior(){
 
     delete controller_costmap_ros_;
 
@@ -174,7 +174,7 @@ namespace reactive_controller {
   }
 
 
-  void ReactiveController::publishZeroVelocity(){
+  void WanderingBehavior::publishZeroVelocity(){
     geometry_msgs::Twist cmd_vel;
     cmd_vel.linear.x = 0.0;
     cmd_vel.linear.y = 0.0;
@@ -188,8 +188,8 @@ inline double abs_angle_diff(const double x, const double y)
 }
 
 
-  void ReactiveController::planThread(){
-    ROS_DEBUG_NAMED("reactive_controller_plan_thread","Starting planner thread...");
+  void WanderingBehavior::planThread(){
+    ROS_DEBUG_NAMED("wandering_behavior_plan_thread","Starting planner thread...");
     ros::NodeHandle n;
     ros::Timer timer;
     bool wait_for_wake = false;
@@ -230,7 +230,7 @@ inline double abs_angle_diff(const double x, const double y)
         goal_yi = std::max(0, std::min(goal_yi, (int)steps));
         goal_xi *= x_step;
         goal_yi *= y_step;
-        auto line_cost = reactive_controller::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
+        auto line_cost = wandering_behavior::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
         raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
         double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
         double angle_diff = abs_angle_diff(current_angle, angle);
@@ -325,16 +325,14 @@ inline double abs_angle_diff(const double x, const double y)
     }
   }
 
-  int ReactiveController::executeCb(const reactive_controller::NavigateGoalConstPtr& goal)
+  int WanderingBehavior::executeCb(const wandering_behavior::WanderGoalConstPtr& goal)
   {
-    ROS_ERROR("LOOP START");
-
     publishZeroVelocity();
 
 
     ros::Rate r(controller_frequency_);
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("reactive_controller","Starting up costmaps that were shut down previously");
+      ROS_DEBUG_NAMED("wandering_behavior","Starting up costmaps that were shut down previously");
       controller_costmap_ros_->start();
     }
 
@@ -380,7 +378,7 @@ inline double abs_angle_diff(const double x, const double y)
       //check if execution of the goal has completed in some way
 
       ros::WallDuration t_diff = ros::WallTime::now() - start;
-      ROS_DEBUG_NAMED("reactive_controller","Full control cycle time: %.9f\n", t_diff.toSec());
+      ROS_DEBUG_NAMED("wandering_behavior","Full control cycle time: %.9f\n", t_diff.toSec());
 
       r.sleep();
       //make sure to sleep for the remainder of our cycle time
@@ -395,12 +393,12 @@ inline double abs_angle_diff(const double x, const double y)
     return -1;
   }
 
-  double ReactiveController::distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2)
+  double WanderingBehavior::distance(const geometry_msgs::PoseStamped& p1, const geometry_msgs::PoseStamped& p2)
   {
     return hypot(p1.pose.position.x - p2.pose.position.x, p1.pose.position.y - p2.pose.position.y);
   }
 
-  int ReactiveController::executeCycle(){
+  int WanderingBehavior::executeCycle(){
     //boost::recursive_mutex::scoped_lock ecl(configuration_mutex_);
     //we need to be able to publish velocity commands
     geometry_msgs::Twist cmd_vel;
@@ -444,7 +442,7 @@ inline double abs_angle_diff(const double x, const double y)
       latest_plan_ = temp_plan;
       lock.unlock();
 
-      ROS_DEBUG_NAMED("reactive_controller", "Got a new plan...swap pointers");
+      ROS_DEBUG_NAMED("wandering_behavior", "Got a new plan...swap pointers");
 
       if (!tc_->setPlan(*controller_plan_)) {
         //ABORT and SHUTDOWN COSTMAPS
@@ -472,7 +470,7 @@ inline double abs_angle_diff(const double x, const double y)
 
 
     //ROS_ERROR_STREAM("Cycling " << state_);
-    //the reactive_controller state machine, handles the control logic for navigation
+    //the wandering_behavior state machine, handles the control logic for navigation
     switch(state_){
       //if we are in a planning state, then we'll attempt to make a plan
       case PLANNING:
@@ -486,11 +484,11 @@ inline double abs_angle_diff(const double x, const double y)
 
       //if we're controlling, we'll attempt to find valid velocity commands
       case CONTROLLING:
-        ROS_DEBUG_NAMED("reactive_controller","In controlling state.");
+        ROS_DEBUG_NAMED("wandering_behavior","In controlling state.");
 
         //check to see if we've reached our goal
         if(tc_->isGoalReached()){
-          ROS_DEBUG_NAMED("reactive_controller","Goal reached!");
+          ROS_DEBUG_NAMED("wandering_behavior","Goal reached!");
           resetState();
 
           //disable the planner thread
@@ -531,7 +529,7 @@ inline double abs_angle_diff(const double x, const double y)
           //check if we've tried to find a valid control for longer than our time limit
           if(ros::Time::now() > attempt_end){
             //we'll move into our obstacle clearing mode
-            ROS_ERROR("CONTROLLER PATIENCE EXPIRED, CLEARING");
+            ROS_ERROR("Controller patience expired. Recovery triggered");
             publishZeroVelocity();
             state_ = CLEARING;
             recovery_trigger_ = CONTROLLING_R;
@@ -626,7 +624,7 @@ inline double abs_angle_diff(const double x, const double y)
           last_oscillation_reset_ = ros::Time::now();
 
           //we'll check if the recovery behavior actually worked
-          ROS_DEBUG_NAMED("reactive_controller_recovery","Going back to planning state");
+          ROS_DEBUG_NAMED("wandering_behavior_recovery","Going back to planning state");
           last_valid_plan_ = ros::Time::now();
           planning_retries_ = 0;
           state_ = PLANNING;
@@ -635,13 +633,13 @@ inline double abs_angle_diff(const double x, const double y)
           recovery_index_++;
         }
         else{
-          ROS_DEBUG_NAMED("reactive_controller_recovery","All recovery behaviors have failed, locking the planner and disabling it.");
+          ROS_DEBUG_NAMED("wandering_behavior_recovery","All recovery behaviors have failed, locking the planner and disabling it.");
           //disable the planner thread
           boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
           runPlanner_ = false;
           lock.unlock();
 
-          ROS_DEBUG_NAMED("reactive_controller_recovery","Something should abort after this.");
+          ROS_DEBUG_NAMED("wandering_behavior_recovery","Something should abort after this.");
 
           if(recovery_trigger_ == CONTROLLING_R){
             ROS_ERROR("Aborting because a valid control could not be found. Even after executing all recovery behaviors");
@@ -670,7 +668,7 @@ inline double abs_angle_diff(const double x, const double y)
     return 0;
   }
 
-  void ReactiveController::resetState(){
+  void WanderingBehavior::resetState(){
     // Disable the planner thread
     boost::unique_lock<boost::recursive_mutex> lock(planner_mutex_);
     runPlanner_ = false;
@@ -684,12 +682,12 @@ inline double abs_angle_diff(const double x, const double y)
 
     //if we shutdown our costmaps when we're deactivated... we'll do that now
     if(shutdown_costmaps_){
-      ROS_DEBUG_NAMED("reactive_controller","Stopping costmaps");
+      ROS_DEBUG_NAMED("wandering_behavior","Stopping costmaps");
       controller_costmap_ros_->stop();
     }
   }
 
-  bool ReactiveController::getRobotPose(geometry_msgs::PoseStamped& global_pose, costmap_2d::Costmap2DROS* costmap)
+  bool WanderingBehavior::getRobotPose(geometry_msgs::PoseStamped& global_pose, costmap_2d::Costmap2DROS* costmap)
   {
     tf2::toMsg(tf2::Transform::getIdentity(), global_pose.pose);
     geometry_msgs::PoseStamped robot_pose;

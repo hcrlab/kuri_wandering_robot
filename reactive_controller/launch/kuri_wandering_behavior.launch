@@ -8,8 +8,8 @@
 
   <!--<include file="$(find kuri_navigation)/launch/velocity_smoother.launch"/>-->
 
-  <node pkg="reactive_controller" type="reactive_controller" respawn="false" name="reactive_controller" output="screen">
-    <rosparam file="$(find reactive_controller)/config/costmap_params.yaml" command="load" />
+  <node pkg="wandering_behavior" type="wandering_behavior" respawn="false" name="wandering_behavior" output="screen">
+    <rosparam file="$(find wandering_behavior)/config/costmap_params.yaml" command="load" />
 
     <!--overwrite observation_sources to not include the laser-->
     <rosparam unless="$(arg use_laser)" ns="local_costmap/obstacle_layer" param="observation_sources">bump</rosparam>
@@ -18,9 +18,9 @@
     <rosparam unless="$(arg use_laser)" ns="global_costmap/obstacle_layer/bump" param="max_obstacle_persistence">30.0</rosparam>
 
     <!--<rosparam file="$(find kuri_navigation)/config/nav_params/base_local_planner_params.yaml" command="load" />-->
-    <rosparam file="$(find reactive_controller)/config/dwa_local_planner_params.yaml" command="load" />
+    <rosparam file="$(find wandering_behavior)/config/dwa_local_planner_params.yaml" command="load" />
 
-    <rosparam file="$(find reactive_controller)/config/move_base_params.yaml" command="load"/>
+    <rosparam file="$(find wandering_behavior)/config/move_base_params.yaml" command="load"/>
 
     <remap from="cmd_vel" to="/mobile_base/commands/velocity"/>
 

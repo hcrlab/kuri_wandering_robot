@@ -54,16 +54,16 @@
 #include <std_srvs/Empty.h>
 
 #include <actionlib/server/simple_action_server.h>
-#include <reactive_controller/NavigateAction.h>
+#include <wandering_behavior/WanderAction.h>
 
 #include <dynamic_reconfigure/server.h>
 
-namespace reactive_controller {
+namespace wandering_behavior {
 
-typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> NavigateActionServer;
+typedef actionlib::SimpleActionServer<wandering_behavior::WanderAction> WanderActionServer;
 
 
-  enum ReactiveControllerState {
+  enum WanderingBehaviorState {
     PLANNING,
     CONTROLLING,
     CLEARING
@@ -77,22 +77,22 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
   };
 
   /**
-   * @class ReactiveController
+   * @class WanderingBehavior
    * @brief A class that uses the actionlib::ActionServer interface that moves the robot base to a goal location.
    */
-  class ReactiveController {
+  class WanderingBehavior {
     public:
       /**
        * @brief  Constructor for the actions
        * @param name The name of the action
        * @param tf A reference to a TransformListener
        */
-      ReactiveController(tf2_ros::Buffer& tf);
+      WanderingBehavior(tf2_ros::Buffer& tf);
 
       /**
        * @brief  Destructor - Cleans up
        */
-      virtual ~ReactiveController();
+      virtual ~WanderingBehavior();
 
       /**
        * @brief  Performs a control cycle
@@ -124,7 +124,7 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
 
       void planThread();
 
-      int executeCb(const reactive_controller::NavigateGoalConstPtr& move_base_goal);
+      int executeCb(const wandering_behavior::WanderGoalConstPtr& move_base_goal);
 
 
 
@@ -154,11 +154,11 @@ typedef actionlib::SimpleActionServer<reactive_controller::NavigateAction> Navig
       bool make_plan_clear_costmap_, make_plan_add_unreachable_goal_;
       double oscillation_timeout_, oscillation_distance_;
 
-      NavigateActionServer* as_;
-      reactive_controller::NavigateResult as_result;
-      reactive_controller::NavigateFeedback as_feedback;
+      WanderActionServer* as_;
+      wandering_behavior::WanderResult as_result;
+      wandering_behavior::WanderFeedback as_feedback;
 
-      ReactiveControllerState state_;
+      WanderingBehaviorState state_;
       RecoveryTrigger recovery_trigger_;
 
       ros::Time last_valid_plan_, last_valid_control_, last_oscillation_reset_;

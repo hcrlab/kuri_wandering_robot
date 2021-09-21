@@ -27,15 +27,15 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <reactive_controller/reactive_controller.h>
+#include <wandering_behavior/wandering_behavior.h>
 #include <tf2_ros/transform_listener.h>
 
 int main(int argc, char** argv){
-  ros::init(argc, argv, "reactive_controller");
+  ros::init(argc, argv, "wandering_behavior");
   tf2_ros::Buffer buffer(ros::Duration(10));
   tf2_ros::TransformListener tf(buffer);
 
-  reactive_controller::ReactiveController move_base( buffer );
+  wandering_behavior::WanderingBehavior move_base( buffer );
 
   //ros::MultiThreadedSpinner s;
   ros::spin();
