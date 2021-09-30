@@ -30,7 +30,7 @@ Note that you will have to do some network configuration to enable the nodes on 
 
 ### Launching the Nodes
 
-Note that you will need to simultaneously have code running inside and outside the docker container. We recommend using [tmux](https://github.com/tmux/tmux/wiki/Installing) for this, although other valid approaches exist.
+Note that you will need to simultaneously have code running inside and outside the docker container. We recommend using [tmux](https://github.com/tmux/tmux/wiki/Installing) for this, although other valid approaches exist. Further note that `../env.sh` is a convenience script to enable users to correctly configure the environments inside and outside the docker image.
 
 In your workspace outside the Docker container, ensure that you have pulled and built the latest files from the [kuri](https://github.com/hcrlab/kuri/tree/melodic-devel) repository, and are in the `melodic_devel` branch. (Note that this branch will still build on ROS Indigo, which is native to Kuri. It is called `melodic_devel` because it is intended to interace with `kuri_wandering_robot`, which is run in ROS Melodic.) Then, run `roslaunch kuri_launch kuri.launch use_camera:=true use_navigation:=false`. Note that this *has* to be run outside the container in order to communicate eith Kuri's hardware and sensors.
 
