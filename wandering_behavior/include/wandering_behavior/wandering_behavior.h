@@ -216,6 +216,7 @@ inline int sign(int x)
 * @param  y0 The starting y coordinate
 * @param  x1 The ending x coordinate
 * @param  y1 The ending y coordinate
+* @param  size_x Length of a row in the costmap
 * @param  max_length The maximum desired length of the segment... allows you to not go all the way to the endpoint
 */
 template<class ActionType>

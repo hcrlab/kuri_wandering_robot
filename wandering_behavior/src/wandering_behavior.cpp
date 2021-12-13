@@ -216,6 +216,8 @@ inline double abs_angle_diff(const double x, const double y)
       uint cheapest_cost = -1;
       double best_angle_diff = 2 * M_PI;
       uint steps = 6;
+      // Keep some quantities around to make the inner loop easier to read. We're dynamically computing the points to iterate
+      // because it makes it easier to experiment with the number of rays to consider, but you should cache the coordinates in practice.
       uint half_steps = steps / 2;
       uint steps3 = steps * 3;
       uint steps4 = steps * 4;
@@ -223,22 +225,38 @@ inline double abs_angle_diff(const double x, const double y)
       uint x_step = size_x / steps;
       uint y_step = size_y / steps;
       for (int i = 0; i < steps4; i++) {
+        // This is a compact way of iterating points along the boundary of a square. We create two saw waves with an
+        // offset.
+        // Notice that we're working mod steps4, so we get steps4 unique points.
+        // 6   5  4   3  2  1 0  -1 -2 -3 -2 -1  0
+        // 0  -1 -2  -3 -2 -1 0   1  2  3  4  5  6
         int goal_xi = abs((int)((i % steps4) - steps32)) - half_steps;
         int goal_yi = abs((int)(((i + steps) % steps4) - steps32)) - half_steps;
+
+        // Now we clip the waves. Due to the careful setup,
+        // we're left with movement along one axis while the
+        // other axis is static (movement along a square).
+        // 6 5 4 3 2 1 0 0 0 0 0 0 0
+        // 0 0 0 0 0 0 0 1 2 3 4 5 6
         goal_xi = std::max(0, std::min(goal_xi, (int)steps));
         goal_yi = std::max(0, std::min(goal_yi, (int)steps));
+        // Turn into actual coordinates
         goal_xi *= x_step;
         goal_yi *= y_step;
         auto line_cost = wandering_behavior::CalcCost(this->controller_costmap_ros_->getCostmap()->getCharMap());
+        // Trace line from the center of the costmap (robot's current location) out to the goal coordinates
         raytraceLine(line_cost, mid_x, mid_y, goal_xi, goal_yi, size_x);
         double angle = atan2(goal_yi - (int)mid_y, goal_xi - (int)mid_x);
         double angle_diff = abs_angle_diff(current_angle, angle);
         //ROS_INFO_STREAM("cost" << line_cost.cost << " angle: " << angle << " diff: " << angle_diff);
         if (line_cost.cost < cheapest_cost) {
+          // If the line is cheaper, keep it
           cheapest_cost = line_cost.cost;
           cheapest_goal_i = i;
           best_angle_diff = angle_diff;
         } else if (line_cost.cost == cheapest_cost && angle_diff < best_angle_diff){
+          // If it's the same cost (likely only to happen when the cost is 0), keep it if its closer
+          // to the current heading angle
           cheapest_cost = line_cost.cost;
           cheapest_goal_i = i;
           best_angle_diff = angle_diff;
@@ -248,6 +266,7 @@ inline double abs_angle_diff(const double x, const double y)
       if (cheapest_cost > cost_threshold) {
         ROS_WARN_STREAM_THROTTLE(1, "No plan beneath threshold " << cost_threshold);
       } else {
+        // Reconstruct the best goal from the index
         int goal_xi = abs((int)((cheapest_goal_i % steps4) - steps32)) - half_steps;
         int goal_yi = abs((int)(((cheapest_goal_i + steps) % steps4) - steps32)) - half_steps;
         goal_xi = std::max(0, std::min(goal_xi, (int)steps));
@@ -255,6 +274,7 @@ inline double abs_angle_diff(const double x, const double y)
         goal_xi *= x_step;
         goal_yi *= y_step;
 
+        // Get real, odom coordinates
         double start_x;
         double start_y;
         this->controller_costmap_ros_->getCostmap()->mapToWorld(mid_x, mid_y, start_x, start_y);
@@ -266,25 +286,27 @@ inline double abs_angle_diff(const double x, const double y)
         double goal_angle = atan2(goal_y - start_y, goal_x - start_x);
         geometry_msgs::PoseStamped current_pose;
         getRobotPose(current_pose, controller_costmap_ros_);
-        if (goal_angle != current_angle or distance(current_pose, planner_goal_) < 0.2) {
 
+        // Did the plan change (new angle) or did we reach the end of the current line?
+        if (goal_angle != current_angle or distance(current_pose, planner_goal_) < 0.2) {
+          // Time to bake a new line as our plan for the local controller to follow
           current_angle = goal_angle;
 
           // First get the angle to an odom frame quat
           tf2::Quaternion q;
           q.setRPY(0, 0, goal_angle);
-          geometry_msgs::Quaternion goal_angle_in_base_link = tf2::toMsg(q);
+          geometry_msgs::Quaternion goal_angle_in_odom = tf2::toMsg(q);
 
-          // Now find a point in the direction of the quat.
-          // Start with the straight ahead in base_link
           geometry_msgs::PoseStamped goal_pose;
           goal_pose.header.frame_id = global_frame_;
           goal_pose.pose.position.x = goal_x;
           goal_pose.pose.position.y = goal_y;
-          goal_pose.pose.orientation = goal_angle_in_base_link;
+          goal_pose.pose.orientation = goal_angle_in_odom;
 
+          // Viz helps a lot when playing with opaque transformation math
           current_goal_pub_.publish(goal_pose);
 
+          // Create a line path with 100 poses interpolated from the start to the goal
           for (int i = 0; i < 100; i++) {
             geometry_msgs::PoseStamped step;
             step.header.frame_id = global_frame_;
@@ -552,6 +574,8 @@ inline double abs_angle_diff(const double x, const double y)
       //we'll try to clear out space with any user-provided recovery behaviors
       case CLEARING:
         ROS_ERROR("In clearing/recovery state");
+        // NOTE: This is where you should create your own "recovery behaviors". We don't use
+        // the typical move_base pluginlib format because it's too cumbersome.
         //we'll invoke whatever recovery behavior we're currently on if they're enabled
         if(recovery_behavior_enabled_){
           ROS_INFO("Executing behavior %u", recovery_index_+1);
