@@ -67,7 +67,7 @@ class KuriWanderingRobot(object):
         self.state = KuriWanderingRobotState.NORMAL
 
         # Initialize the wandering module
-        self.wandering_module_action = actionlib.SimpleActionClient('/wandering_behavior/wander', WanderAction)
+        self.wandering_module_action = actionlib.SimpleActionClient('/wandering_behavior/navigate', WanderAction)
 
         # Initialize the eye controller
         self.eyelid_controller_action = actionlib.SimpleActionClient('/eyelids_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
