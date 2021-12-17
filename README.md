@@ -1,8 +1,8 @@
 # Kuri Wandering Robot
 
-This repository contains the code associated with the following paper:
+This repository contains the code associated with the below paper. Please cite the paper if you use the code.
 
-"Not All Who Wander Are Lost: A Localization-Free System for In-The-Wild Mobile Robot Deployments" Authors Anonymized, Submitted to HRI22
+*Nanavati, A., Walker, N., Taber, L., Mavrogiannis, C., Takayama, L., Cakmak, M., & Srinivasa, S. (2022, March). Not All Who Wander Are Lost: A Localization-Free System for In-the-Wild Mobile Robot Deployments. In Proceedings of the 2022 ACM/IEEE International Conference on Human-Robot Interaction.*
 
 The code is broadly divided into three components: motion (`wandering_behavior`), remote user interaction (`slackbot`), and the executive node that integrates the two (`kuri_wandering_robot`).
 
@@ -40,9 +40,9 @@ To run a docker image, from any location run:
 sudo docker run --rm --network host -v /home/mayfield/workspaces/my_workspace:/workspace -it my-image
 ```
 
-Note that Kuri still needs its default code running outside the docker image, to communicate with its motors/sensors. Therefore, you should have one workspace that you compile outside the docker image (in ROS Indigo) with [the default kuri code](https://github.com/hcrlab/kuri/tree/melodic-devel). You should have another workspace that you compile within the docker image (in ROS Melodic) with this repository. Then, to run any code within a docker image on Kuri, outside the docker image run the default kuri launchfile, and inside the docker image run this code. More details can be found in the [readme in the kuri_wandering_robot directory](./kuri_wandering_robot/README.md).
+Note that Kuri still needs its default code running outside the docker image, to communicate with its motors/sensors. Therefore, you should have one workspace that you compile outside the docker image (in ROS Indigo) with [the default kuri code (melodic-devel branch)](https://github.com/hcrlab/kuri/tree/melodic-devel). You should have another workspace that you compile within the docker image (in ROS Melodic) with this repository. Then, to run any code within a docker image on Kuri, outside the docker image run the default kuri launchfile, and inside the docker image run this code. More details can be found in the [readme in the kuri_wandering_robot directory](./kuri_wandering_robot/README.md).
 
-NOTE: For running the overall demo, use the Dockerfile in `kuri_cmm_demo`. The Dockerfile in `local_coverage_navigation` should chiefly be used to run the local navigator in isolation.
+NOTE: For running the overall system, use the Dockerfile in `kuri_wandering_robot`. The Dockerfile in `wandering_behavior` should chiefly be used to run that node in isolation.
 
 ### Slackbot
 
@@ -55,3 +55,7 @@ Refer to the [readme in the wandering_behavior directory](./wandering_behavior/R
 ### Kuri Wandering Robot
 
 This node is the executive node; it brings together the slackbot and navigation, and decision-making aspects of this system. Refer to the [readme in the kuri_wandering_robot directory](./kuri_wandering_robot/README.md).
+
+## Deployment Code: Robot Photographer
+
+As is mentioned in the paper, for the four-day deployment we extended this system to a robot photographer. That version of the code can be found in [this commit](https://github.com/hcrlab/kuri_wandering_robot/tree/1888a45f0c5b896d6c79a2e8ad1174b546be2175).
